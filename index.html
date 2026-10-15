@@ -96,6 +96,29 @@
   .src{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:0 5px;margin-left:4px}
   code{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:0 5px;font-size:12px}
 
+  /* tabs, category chips, manual picker, price list */
+  .tabs{display:flex;gap:6px;margin:0 0 14px;border-bottom:1px solid var(--line);overflow-x:auto}
+  .tab{border:0;background:transparent;color:var(--muted);padding:10px 16px;font-weight:700;font-size:14px;border-bottom:3px solid transparent;white-space:nowrap}
+  .tab.on{color:var(--gold);border-bottom-color:var(--orange)}
+  .cats{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0}
+  .cat{border:1px solid var(--line);background:var(--panel2);color:var(--muted);border-radius:999px;padding:6px 13px;font-size:13px;font-weight:600;white-space:nowrap}
+  .cat span{opacity:.6;font-size:11.5px;margin-left:3px}
+  .cat.on{background:var(--orange);border-color:transparent;color:#1a0d00}
+  .cat.on span{opacity:.75}
+  .prow{display:flex;align-items:center;gap:10px;padding:9px 6px;border-bottom:1px solid #261c13;cursor:pointer;border-radius:8px}
+  .prow:hover{background:var(--panel2)}
+  .prow.sel{background:rgba(255,138,31,.09)}
+  .pinfo{flex:1;min-width:0}
+  .pprice{font-weight:800;color:var(--gold);white-space:nowrap}
+  .pcat{margin:18px 0 4px;font-size:14px;letter-spacing:1px;color:var(--orange);text-transform:uppercase}
+  .pn{font-weight:700;font-size:16px}
+  .pp{font-size:20px;font-weight:800;color:var(--gold)}
+  .mrp{color:var(--muted);text-decoration:line-through}
+  .floatbar{display:none;position:fixed;left:12px;right:12px;bottom:12px;z-index:40;align-items:center;justify-content:space-between;gap:10px;background:var(--panel2);border:1px solid #6b4a24;border-radius:14px;padding:10px 14px;box-shadow:0 6px 24px rgba(0,0,0,.5);font-weight:700}
+  .floatbar.show{display:flex}
+  @media (min-width:901px){.floatbar{display:none!important}}
+  @media (max-width:700px){.cats{flex-wrap:nowrap;overflow-x:auto;position:sticky;top:0;background:var(--panel);z-index:5;padding:8px 0;margin:4px 0}}
+
   /* modal */
   .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
   .modal-bg.open{display:flex}
@@ -140,9 +163,39 @@
   <div id="fileWarn" class="banner err" style="display:none"><b>Opened as a local file.</b> Browsers block or forget the microphone for <code>file://</code> pages, and no code can override that. Run it from <code>http://localhost</code> or https instead — e.g. put this file in your ABS project’s <code>public/</code> folder, run <code>npm run dev</code>, and open <code>http://localhost:5173/voice-billing.html</code>.</div>
   <div id="loadError" class="banner err" style="display:none"></div>
 
-  <div class="grid">
+  <nav class="tabs" id="tabs">
+    <button class="tab on" data-tab="voice">🎤 Voice</button>
+    <button class="tab" data-tab="manual">✍ Manual invoice</button>
+    <button class="tab" data-tab="price">🏷 Price list</button>
+  </nav>
+
+  <!-- PRICE LIST (full width) -->
+  <div id="viewPrice" style="display:none">
+    <div class="card">
+      <div class="row sp-between">
+        <h2 style="margin:0">Price list</h2>
+        <input type="text" id="pSearch" placeholder="Search product…" style="max-width:260px" autocomplete="off">
+      </div>
+      <div class="cats" id="pCats"></div>
+      <div id="pBody"></div>
+    </div>
+  </div>
+
+  <div class="grid" id="mainGrid">
+    <!-- LEFT (manual): category-based item picker -->
+    <div id="viewManual" style="display:none">
+      <div class="card">
+        <h2>Add items manually</h2>
+        <input type="text" id="mSearch" placeholder="Search product…" autocomplete="off">
+        <div class="cats" id="mCats"></div>
+        <div id="mList"></div>
+        <div class="hint" style="margin-top:8px">Tap a product to add 1 · use − / + or type a quantity. Rates can be edited in the bill.</div>
+      </div>
+      <div class="floatbar" id="floatBar"><span id="fbInfo"></span><button class="btn primary" id="fbGo">View bill ↓</button></div>
+    </div>
+
     <!-- LEFT: voice -->
-    <div>
+    <div id="viewVoice">
       <div class="card">
         <h2>Speak the products</h2>
         <div class="mic-wrap">
@@ -182,7 +235,7 @@
     </div>
 
     <!-- RIGHT: bill -->
-    <div>
+    <div id="billCol">
       <div class="card">
         <div class="row sp-between" style="margin-bottom:8px">
           <h2 style="margin:0">Current bill</h2>
@@ -630,6 +683,7 @@ function renderBill(flashId) {
   const t = totals();
   $("tSub").textContent = inr(t.sub); $("tPkg").textContent = inr(t.pkg); $("tGrand").textContent = inr(t.grand);
   $("btnCreate").disabled = !bill.length;
+  if (window.__onBill) window.__onBill();
 }
 $("billBody").addEventListener("click", (e) => {
   const act = e.target.dataset.act; if (!act) return;
@@ -1052,6 +1106,7 @@ $("aFile").onchange = async (e) => {
   try { const j = JSON.parse(await e.target.files[0].text()); aliases = { learned: j.learned || [], auto: j.auto || [] }; saveAliases(); prepareCatalog(CURRENT_LIST); renderAliasList(); toast("Imported"); } catch { toast("Not a valid aliases file"); }
 };
 function fillProdList() {
+  if (window.__onCatalog) window.__onCatalog();
   $("prodList").innerHTML = CURRENT_LIST.map((p) => `<option value="${esc(p.name + " — " + p.category)}">`).join("");
 }
 
@@ -1178,4 +1233,166 @@ $("btnCreate").onclick = async () => {
       });
       saved = true; docId = ref.id;
     }
-    lastInvoic
+    lastInvoice = { ...base, invoiceNo, date: new Date(), saved, docId };
+    showDone(lastInvoice);
+  } catch (err) {
+    const denied = err?.code === "permission-denied";
+    toast(denied ? "Permission denied — sign in as admin" : "Save failed: " + (err.message || err));
+    if (denied) openAuth();
+  } finally { btn.textContent = label; btn.disabled = !bill.length; }
+};
+
+function receiptHTML(inv) {
+  const d = inv.date;
+  const when = d.toLocaleDateString("en-IN") + " " + d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+  const rows = inv.items.map((it) =>
+    `<tr><td colspan="3">${esc(it.description)}</td></tr><tr><td>${it.qty} × ${it.rate}</td><td></td><td class="r">${it.amount}</td></tr>`).join("");
+  return `<div class="rc">
+    <h4>${esc(SHOP.name)}</h4>
+    <div class="c">${esc(SHOP.tagline)}<br>${esc(SHOP.addr1)}, ${esc(SHOP.addr2)}<br>Ph: ${esc(SHOP.phone)}</div>
+    <hr>
+    <div>Invoice: <b>${esc(inv.invoiceNo)}</b></div>
+    <div>Date: ${esc(when)}</div>
+    <div>Customer: ${esc(inv.customer.name)}${inv.customer.mobile ? " · " + esc(inv.customer.mobile) : ""}</div>
+    <hr>
+    <table style="width:100%">${rows}</table>
+    <hr>
+    <div class="tot"><span>Subtotal</span><span>${inv.subtotal}</span></div>
+    ${inv.packageAmount ? `<div class="tot"><span>Package ${inv.packagePercent}%</span><span>${inv.packageAmount}</span></div>` : ""}
+    <div class="tot big"><span>TOTAL</span><span>₹${inv.grandTotal}</span></div>
+    <div>Paid by: ${esc(inv.paymentMode)}${inv.transactionRef ? " (" + esc(inv.transactionRef) + ")" : ""}</div>
+    <hr>
+    <div class="c">${esc(SHOP.terms)}<br><b>${esc(SHOP.thanks)}</b></div>
+  </div>`;
+}
+function showDone(inv) {
+  $("doneTitle").textContent = inv.saved ? "Invoice saved ✓" : "Test invoice (not saved)";
+  $("doneSub").textContent = inv.saved ? `${inv.invoiceNo} is now in Firestore → invoices.` : "Test mode is ON — nothing was written to your database.";
+  const html = receiptHTML(inv);
+  $("donePreview").innerHTML = html; $("receipt").innerHTML = html;
+  $("doneModal").classList.add("open");
+}
+$("donePrint").onclick = () => window.print();
+$("doneNew").onclick = () => {
+  $("doneModal").classList.remove("open");
+  bill = []; undoStack = []; lastTouched = null; renderBill();
+  ["custName", "custMobile", "txnRef", "notes"].forEach((id) => ($(id).value = ""));
+  $("log").innerHTML = '<div class="hint">Nothing yet.</div>'; logCount = 0;
+  $("heard").textContent = "Say the next customer’s products…"; $("heard").classList.remove("has");
+};
+$("doneWa").onclick = () => {
+  const inv = lastInvoice; if (!inv) return;
+  const lines = inv.items.map((i) => `• ${i.description} — ${i.qty} × ${i.rate} = ${i.amount}`).join("\n");
+  const msg = `*${SHOP.name}*\nInvoice ${inv.invoiceNo}\n\n${lines}\n\nTotal: ₹${inv.grandTotal}\n${SHOP.thanks}`;
+  const num = inv.customer.mobile.replace(/\D/g, "");
+  const to = num.length === 10 ? "91" + num : num;
+  window.open(`https://wa.me/${to}?text=${encodeURIComponent(msg)}`, "_blank");
+};
+
+/* ───────────────────────── tabs · manual invoice · price list ───────────────────────── */
+let activeTab = "voice", mCat = "ALL", pCat = "ALL";
+const TAB_VIEWS = { voice: ["viewVoice", "billCol"], manual: ["viewManual", "billCol"], price: ["viewPrice"] };
+const price = (n) => "₹" + (+n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
+const catOf = (p) => p.category || "OTHER";
+
+function setTab(t) {
+  if (!TAB_VIEWS[t]) t = "voice";
+  if (t !== "voice") stopRec();
+  activeTab = t; store.set("abs_tab", t);
+  for (const id of ["viewVoice", "viewManual", "viewPrice", "billCol"]) $(id).style.display = TAB_VIEWS[t].includes(id) ? "" : "none";
+  $("mainGrid").style.display = t === "price" ? "none" : "";
+  document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
+  renderManual(); renderPrice(); updateFloat();
+  window.scrollTo(0, 0);
+}
+$("tabs").addEventListener("click", (e) => { const b = e.target.closest(".tab"); if (b) setTab(b.dataset.tab); });
+
+function catChips(el, sel) {
+  const counts = new Map();
+  CURRENT_LIST.forEach((p) => counts.set(catOf(p), (counts.get(catOf(p)) || 0) + 1));
+  const all = [["ALL", "All", CURRENT_LIST.length], ...[...counts].map(([c, n]) => [c, c, n])];
+  el.innerHTML = all.map(([v, l, n]) => `<button class="cat${v === sel ? " on" : ""}" data-c="${esc(v)}">${esc(l)} <span>${n}</span></button>`).join("");
+}
+function filterProducts(cat, query) {
+  const q = query.toLowerCase().split(/\s+/).filter(Boolean);
+  return CURRENT_LIST.filter((p) => {
+    if (cat !== "ALL" && catOf(p) !== cat) return false;
+    const hay = `${p.name} ${p.nameTa} ${p.category}`.toLowerCase();
+    return q.every((w) => hay.includes(w));
+  });
+}
+const stockTag = (p) => p.stock === "out" ? ' <span style="color:var(--bad)">· out of stock</span>' : p.stock === "low" ? ' <span style="color:var(--warn)">· low stock</span>' : "";
+
+/* manual invoice */
+const billQty = (p) => (bill.find((b) => b.productId === p.id) || {}).qty || 0;
+function renderManual() {
+  if (activeTab !== "manual") return;
+  const y = window.scrollY;
+  if (!CURRENT_LIST.some((p) => catOf(p) === mCat)) mCat = "ALL";
+  catChips($("mCats"), mCat);
+  const list = filterProducts(mCat, $("mSearch").value);
+  const inBill = new Map(bill.map((b) => [b.productId, b.qty]));
+  $("mList").innerHTML = list.length ? list.map((p) => {
+    const n = inBill.get(p.id) || 0;
+    return `<div class="prow${n ? " sel" : ""}" data-id="${esc(p.id)}">
+      <div class="pinfo"><div class="item-name">${esc(p.name)}</div><div class="item-sub">${mCat === "ALL" ? esc(p.category) + (p.unit ? " · " : "") : ""}${esc(p.unit)}${stockTag(p)}</div></div>
+      <div class="pprice">${price(p.sale || p.mrp)}</div>
+      <span class="qty"><button data-a="dec">−</button><input type="number" min="0" inputmode="numeric" value="${n || ""}" placeholder="0" data-a="set"><button data-a="inc">+</button></span>
+    </div>`;
+  }).join("") : '<div class="empty">No products found.</div>';
+  window.scrollTo(0, y);
+}
+function setManualQty(p, n) {
+  const line = bill.find((b) => b.productId === p.id);
+  if (n <= 0) { if (line) { snapshot(); bill = bill.filter((b) => b !== line); renderBill(); } else renderManual(); return; }
+  if (!line) { addToBill(p, n); return; }
+  snapshot(); line.qty = n; lastTouched = p.id; renderBill(p.id);
+}
+$("mCats").addEventListener("click", (e) => { const b = e.target.closest(".cat"); if (!b) return; mCat = b.dataset.c; renderManual(); });
+$("mSearch").addEventListener("input", renderManual);
+$("mList").addEventListener("click", (e) => {
+  const row = e.target.closest(".prow"); if (!row || e.target.tagName === "INPUT") return;
+  const p = CURRENT_LIST.find((x) => x.id === row.dataset.id); if (!p) return;
+  setManualQty(p, billQty(p) + (e.target.dataset.a === "dec" ? -1 : 1));
+});
+$("mList").addEventListener("change", (e) => {
+  if (e.target.dataset.a !== "set") return;
+  const p = CURRENT_LIST.find((x) => x.id === e.target.closest(".prow").dataset.id); if (!p) return;
+  setManualQty(p, Math.max(0, Math.round(+e.target.value) || 0));
+});
+function updateFloat() {
+  const n = bill.reduce((s, b) => s + (+b.qty || 0), 0);
+  $("floatBar").classList.toggle("show", bill.length > 0);
+  $("fbInfo").textContent = `${bill.length} item${bill.length === 1 ? "" : "s"} · ${inr(totals().grand)}`;
+}
+$("fbGo").onclick = () => $("billCol").scrollIntoView({ behavior: "smooth" });
+
+/* price list (customer-facing view) */
+function renderPrice() {
+  if (activeTab !== "price") return;
+  if (!CURRENT_LIST.some((p) => catOf(p) === pCat)) pCat = "ALL";
+  catChips($("pCats"), pCat);
+  const list = filterProducts(pCat, $("pSearch").value);
+  const groups = new Map();
+  list.forEach((p) => { const c = catOf(p); (groups.get(c) || groups.set(c, []).get(c)).push(p); });
+  $("pBody").innerHTML = list.length ? [...groups].map(([c, ps]) => `
+    <h3 class="pcat">${esc(c)}</h3>
+    <table><thead><tr><th>Item</th><th>Unit</th><th class="num">MRP</th><th class="num">Price</th></tr></thead><tbody>
+    ${ps.map((p) => `<tr><td><div class="pn">${esc(p.name)}</div>${p.nameTa ? `<div class="item-sub">${esc(p.nameTa)}</div>` : ""}${stockTag(p) ? `<div class="item-sub">${stockTag(p).replace(" · ", "")}</div>` : ""}</td>
+      <td>${esc(p.unit)}</td><td class="num mrp">${p.mrp > p.sale ? price(p.mrp) : ""}</td><td class="num pp">${price(p.sale || p.mrp)}</td></tr>`).join("")}
+    </tbody></table>`).join("") : '<div class="empty">No products found.</div>';
+}
+$("pCats").addEventListener("click", (e) => { const b = e.target.closest(".cat"); if (!b) return; pCat = b.dataset.c; renderPrice(); window.scrollTo(0, 0); });
+$("pSearch").addEventListener("input", renderPrice);
+
+window.__onBill = () => { renderManual(); updateFloat(); };
+window.__onCatalog = () => { renderManual(); renderPrice(); };
+setTab(store.get("abs_tab") || "voice");
+
+if (location.protocol === "file:") $("fileWarn").style.display = "block";
+
+// expose the parser for quick console tests
+window.__abs = { llmResolve, transcribe, generateAliases, cfg, handleUtterance, analyzePhrase, decide, setCatalog, prepareCatalog, get bill() { return bill; }, get aliases() { return aliases; } };
+</script>
+</body>
+</html>
