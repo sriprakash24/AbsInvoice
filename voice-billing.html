@@ -1,0 +1,962 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ABS Voice Billing</title>
+<style>
+  :root{
+    --bg:#0c0906; --panel:#17110c; --panel2:#1f1710; --line:#33271b;
+    --text:#f2ece2; --muted:#a39382; --orange:#ff8a1f; --gold:#f5c04a;
+    --ok:#4ade80; --warn:#fbbf24; --bad:#f87171; --radius:14px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans Tamil",sans-serif}
+  button,input,select,textarea{font:inherit;color:inherit}
+  button{cursor:pointer}
+  .app{max-width:1200px;margin:0 auto;padding:12px 16px 40px}
+  header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 0 14px}
+  header h1{margin:0;font-size:19px;letter-spacing:.3px;background:linear-gradient(90deg,var(--gold),var(--orange));-webkit-background-clip:text;background-clip:text;color:transparent}
+  header .sp{flex:1}
+  .pill{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--panel);border-radius:999px;padding:5px 12px;font-size:12.5px;color:var(--muted)}
+  .pill b{color:var(--text);font-weight:600}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--muted)}
+  .dot.on{background:var(--ok)} .dot.err{background:var(--bad)}
+  .btn{border:1px solid var(--line);background:var(--panel2);border-radius:10px;padding:8px 14px;font-weight:600;font-size:13.5px}
+  .btn:hover{border-color:#5a4228}
+  .btn.primary{background:linear-gradient(180deg,var(--orange),#e06a00);border-color:transparent;color:#1a0d00}
+  .btn.ghost{background:transparent}
+  .btn.danger{color:var(--bad)}
+  .btn:disabled{opacity:.45;cursor:not-allowed}
+  .grid{display:grid;grid-template-columns:minmax(0,5fr) minmax(0,6fr);gap:16px}
+  @media (max-width:900px){.grid{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:16px}
+  .card h2{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);font-weight:700}
+
+  /* mic */
+  .mic-wrap{display:flex;flex-direction:column;align-items:center;gap:10px;padding:6px 0 4px}
+  .mic{width:112px;height:112px;border-radius:50%;border:0;background:radial-gradient(circle at 35% 30%,#ffb04d,var(--orange) 55%,#c75a00);color:#1a0d00;font-size:40px;display:grid;place-items:center;box-shadow:0 8px 30px rgba(255,138,31,.25);transition:transform .1s;touch-action:manipulation;user-select:none;-webkit-user-select:none}
+  .mic:active{transform:scale(.97)}
+  .mic.live{background:radial-gradient(circle at 35% 30%,#ff7b7b,#ef4444 60%,#b91c1c);color:#fff;animation:pulse 1.4s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(239,68,68,.55)}70%{box-shadow:0 0 0 24px rgba(239,68,68,0)}100%{box-shadow:0 0 0 0 rgba(239,68,68,0)}}
+  .mic-label{font-weight:700}
+  .heard{min-height:44px;width:100%;border:1px dashed var(--line);border-radius:10px;padding:8px 12px;color:var(--muted);font-size:14px;text-align:center}
+  .heard.has{color:var(--text);border-style:solid}
+  .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .row.sp-between{justify-content:space-between}
+  select,input[type=text],input[type=tel],input[type=number],input[type=email],input[type=password],textarea{background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:8px 10px;width:100%;outline:none}
+  select{width:auto}
+  input:focus,select:focus,textarea:focus{border-color:var(--orange)}
+  label.small{display:block;font-size:12px;color:var(--muted);margin-bottom:4px}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .seg button{border:0;background:var(--bg);padding:6px 11px;font-size:12.5px;color:var(--muted)}
+  .seg button.on{background:var(--orange);color:#1a0d00;font-weight:700}
+
+  /* log */
+  .log{display:flex;flex-direction:column;gap:6px;max-height:280px;overflow:auto;margin-top:6px}
+  .log-item{background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:8px 10px;font-size:13.5px}
+  .log-item .said{color:var(--muted);font-size:12.5px}
+  .log-item .res{margin-top:2px;display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .tag{border-radius:6px;padding:1px 8px;font-size:12px;font-weight:700}
+  .tag.ok{background:rgba(74,222,128,.14);color:var(--ok)}
+  .tag.warn{background:rgba(251,191,36,.14);color:var(--warn)}
+  .tag.bad{background:rgba(248,113,113,.14);color:var(--bad)}
+  .chip{border:1px solid #6b4a24;background:#2a1c0e;color:var(--gold);border-radius:999px;padding:3px 11px;font-size:12.5px}
+  .chip:hover{background:#3a2711}
+
+  /* bill */
+  table{width:100%;border-collapse:collapse}
+  th{font-size:11.5px;text-transform:uppercase;letter-spacing:.8px;color:var(--muted);text-align:left;padding:6px 6px;border-bottom:1px solid var(--line)}
+  td{padding:8px 6px;border-bottom:1px solid #261c13;vertical-align:middle}
+  td.num,th.num{text-align:right;white-space:nowrap}
+  .item-name{font-weight:600}
+  .item-sub{font-size:12px;color:var(--muted)}
+  .qty{display:inline-flex;align-items:center;gap:4px}
+  .qty button{width:28px;height:28px;border-radius:8px;border:1px solid var(--line);background:var(--panel2);font-weight:800;line-height:1}
+  .qty input{width:54px;text-align:center;padding:5px 4px}
+  input.rate-in{width:84px;text-align:right;padding:5px 6px}
+  .x{border:0;background:transparent;color:var(--muted);font-size:18px}
+  .x:hover{color:var(--bad)}
+  .flash{animation:flash .9s}
+  @keyframes flash{0%{background:rgba(255,138,31,.35)}100%{background:transparent}}
+  .empty{padding:26px 10px;text-align:center;color:var(--muted)}
+  .totals{margin-top:12px;display:grid;gap:4px;justify-content:end;min-width:240px;margin-left:auto}
+  .totals div{display:flex;justify-content:space-between;gap:24px}
+  .totals .grand{font-size:22px;font-weight:800;color:var(--gold);border-top:1px solid var(--line);padding-top:8px;margin-top:4px}
+  .fields{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:14px}
+  .fields .full{grid-column:1/-1}
+  @media (max-width:520px){.fields{grid-template-columns:1fr}}
+  .banner{border-radius:10px;padding:9px 12px;font-size:13px;margin-bottom:12px}
+  .banner.test{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.35);color:var(--warn)}
+  .banner.live{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.4);color:var(--bad)}
+  .banner.err{background:rgba(248,113,113,.1);border:1px solid rgba(248,113,113,.4);color:var(--bad)}
+  .switch{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);cursor:pointer;user-select:none}
+  .switch input{accent-color:var(--orange);width:17px;height:17px}
+  .hint{font-size:12.5px;color:var(--muted)}
+  code{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:0 5px;font-size:12px}
+
+  /* modal */
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;padding:16px;z-index:50}
+  .modal-bg.open{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;width:100%;max-width:400px;max-height:90vh;overflow:auto}
+  .modal h3{margin:0 0 12px}
+  .stack{display:grid;gap:10px}
+
+  /* receipt (print only) */
+  #receipt{display:none}
+  .rc{width:76mm;margin:0 auto;color:#000;background:#fff;font:12px/1.35 "Courier New",monospace;padding:4mm}
+  .rc h4{margin:0;text-align:center;font-size:15px}
+  .rc .c{text-align:center}
+  .rc hr{border:0;border-top:1px dashed #000;margin:6px 0}
+  .rc table td,.rc table th{border:0;padding:1px 0;color:#000;font-size:12px;letter-spacing:0;text-transform:none}
+  .rc .r{text-align:right}
+  .rc .tot{display:flex;justify-content:space-between}
+  .rc .big{font-size:15px;font-weight:700}
+  @media print{
+    body{background:#fff}
+    .app,.modal-bg{display:none!important}
+    #receipt{display:block!important}
+    @page{margin:0}
+  }
+  .preview-wrap{background:#fff;border-radius:10px;padding:8px;margin:10px 0;overflow:auto}
+  .toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#2a1c0e;border:1px solid #6b4a24;color:var(--gold);padding:10px 18px;border-radius:999px;font-weight:600;z-index:60;opacity:0;pointer-events:none;transition:opacity .2s}
+  .toast.show{opacity:1}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>🎆 ABS Voice Billing</h1>
+    <span class="pill"><span class="dot" id="dbDot"></span><span id="dbStatus">Connecting…</span></span>
+    <span class="pill" id="authPill"><span class="dot"></span><b id="authLabel">Not signed in</b></span>
+    <span class="sp"></span>
+    <button class="btn ghost" id="btnRefresh" title="Reload products from Firestore">↻ Products</button>
+    <button class="btn ghost" id="btnAuth">Admin sign in</button>
+  </header>
+
+  <div id="fileWarn" class="banner err" style="display:none"><b>Opened as a local file.</b> Browsers block or forget the microphone for <code>file://</code> pages, and no code can override that. Run it from <code>http://localhost</code> or https instead — e.g. put this file in your ABS project’s <code>public/</code> folder, run <code>npm run dev</code>, and open <code>http://localhost:5173/voice-billing.html</code>.</div>
+  <div id="loadError" class="banner err" style="display:none"></div>
+
+  <div class="grid">
+    <!-- LEFT: voice -->
+    <div>
+      <div class="card">
+        <h2>Speak the products</h2>
+        <div class="mic-wrap">
+          <button class="mic" id="mic" aria-label="Microphone">🎤</button>
+          <div class="mic-label" id="micLabel">Tap to start listening</div>
+          <div class="heard" id="heard">Say e.g. “2 sparkler box, 5 rocket, one thousand wala”</div>
+        </div>
+        <div class="row sp-between" style="margin-top:12px">
+          <div class="row">
+            <span class="hint">Language</span>
+            <select id="lang">
+              <option value="en-IN">English (India)</option>
+              <option value="ta-IN">தமிழ் (Tamil)</option>
+              <option value="hi-IN">हिन्दी</option>
+            </select>
+          </div>
+          <div class="seg" id="modeSeg" title="Hold-to-talk is better in a noisy crowd">
+            <button data-mode="toggle" class="on">Tap on/off</button>
+            <button data-mode="hold">Hold to talk</button>
+          </div>
+        </div>
+        <div class="row" style="margin-top:12px">
+          <input type="text" id="typed" placeholder="…or type here, e.g. 3 flower pot" autocomplete="off">
+          <button class="btn" id="typedGo">Add</button>
+        </div>
+        <div class="hint" id="supportNote" style="margin-top:8px"></div>
+      </div>
+
+      <div class="card" style="margin-top:16px">
+        <h2>What I understood</h2>
+        <div class="log" id="log"><div class="hint">Nothing yet.</div></div>
+        <div class="hint" style="margin-top:10px">
+          Commands: <code>remove &lt;name&gt;</code> <code>remove last</code> <code>make it 5</code> <code>undo</code> <code>clear</code>
+        </div>
+      </div>
+    </div>
+
+    <!-- RIGHT: bill -->
+    <div>
+      <div class="card">
+        <div class="row sp-between" style="margin-bottom:8px">
+          <h2 style="margin:0">Current bill</h2>
+          <div class="row">
+            <button class="btn ghost" id="btnUndo">↶ Undo</button>
+            <button class="btn ghost danger" id="btnClear">Clear</button>
+          </div>
+        </div>
+        <div id="modeBanner"></div>
+        <table>
+          <thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Amount</th><th></th></tr></thead>
+          <tbody id="billBody"></tbody>
+        </table>
+        <div id="billEmpty" class="empty">No items yet — start speaking.</div>
+
+        <div class="totals">
+          <div><span>Subtotal</span><span id="tSub">₹0</span></div>
+          <div><span>Package <input type="number" id="pkgPct" value="3" min="0" step="0.5" style="width:62px;padding:3px 6px;display:inline-block"> %</span><span id="tPkg">₹0</span></div>
+          <div class="grand"><span>Total</span><span id="tGrand">₹0</span></div>
+        </div>
+
+        <div class="fields">
+          <div><label class="small">Customer name</label><input type="text" id="custName" placeholder="Walk-in customer"></div>
+          <div><label class="small">Mobile (optional)</label><input type="tel" id="custMobile" placeholder="10-digit number"></div>
+          <div><label class="small">Payment</label>
+            <select id="payMode" style="width:100%"><option>CASH</option><option>UPI</option><option>CARD</option><option>OTHER</option></select></div>
+          <div><label class="small">Transaction ref (optional)</label><input type="text" id="txnRef"></div>
+          <div class="full"><label class="small">Notes</label><input type="text" id="notes" maxlength="300"></div>
+        </div>
+
+        <div class="row sp-between" style="margin-top:16px">
+          <label class="switch" title="When ON nothing is written to Firestore and no invoice number is used">
+            <input type="checkbox" id="testMode" checked> Test mode (don’t save)
+          </label>
+          <button class="btn primary" id="btnCreate" style="padding:11px 22px;font-size:15px">Create invoice</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- sign-in modal -->
+<div class="modal-bg" id="authModal">
+  <div class="modal">
+    <h3>Admin sign in</h3>
+    <div class="stack">
+      <div class="hint">Same email/password you use for the ABS admin panel. Needed only if your Firestore rules block invoice writes for anonymous users.</div>
+      <input type="email" id="authEmail" placeholder="Email" autocomplete="username">
+      <input type="password" id="authPass" placeholder="Password" autocomplete="current-password">
+      <div id="authErr" class="hint" style="color:var(--bad)"></div>
+      <div class="row sp-between">
+        <button class="btn ghost" id="authCancel">Close</button>
+        <div class="row">
+          <button class="btn ghost" id="authOut">Sign out</button>
+          <button class="btn primary" id="authGo">Sign in</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- invoice done modal -->
+<div class="modal-bg" id="doneModal">
+  <div class="modal" style="max-width:420px">
+    <h3 id="doneTitle">Invoice created</h3>
+    <div class="hint" id="doneSub"></div>
+    <div class="preview-wrap" id="donePreview"></div>
+    <div class="row sp-between">
+      <button class="btn ghost" id="doneWa">WhatsApp</button>
+      <div class="row">
+        <button class="btn" id="donePrint">🖨 Print</button>
+        <button class="btn primary" id="doneNew">New bill</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-bg" id="micModal">
+  <div class="modal">
+    <h3>🎤 Microphone is blocked</h3>
+    <div class="stack">
+      <div class="hint" id="micWhy">Your browser is blocking the microphone for this page, so it can’t ask again. Allow it once and it will work:</div>
+      <ol style="margin:0;padding-left:20px;line-height:1.7">
+        <li>Tap the <b>🔒 / ⓘ icon</b> left of the address bar</li>
+        <li>Open <b>Permissions / Site settings</b></li>
+        <li>Set <b>Microphone → Allow</b></li>
+        <li>Come back here and press <b>Try again</b></li>
+      </ol>
+      <div class="hint" id="micFileNote" style="display:none;color:var(--warn)">You opened this as a local file (file://). Chrome can’t remember permission for local files — run <code>python3 -m http.server</code> in the folder and open <code>http://localhost:8000/voice-billing.html</code>, or host it on https.</div>
+      <div class="row sp-between">
+        <button class="btn ghost" id="micClose">Close</button>
+        <button class="btn primary" id="micRetry">Try again</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="receipt"></div>
+<div class="toast" id="toast"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/11.10.0/firebase-app.js";
+import { getFirestore, collection, getDocs, doc, runTransaction, addDoc, serverTimestamp }
+  from "https://www.gstatic.com/firebasejs/11.10.0/firebase-firestore.js";
+import { getAuth, onAuthStateChanged, signInWithEmailAndPassword, signOut }
+  from "https://www.gstatic.com/firebasejs/11.10.0/firebase-auth.js";
+
+/* ───────────────────────── config (same project as the ABS site) ───────────────────────── */
+const firebaseConfig = {
+  apiKey: "AIzaSyD0starkwOz4212qlrSu3K_aX-9gPufvf8",
+  authDomain: "abs-2026.firebaseapp.com",
+  projectId: "abs-2026",
+  storageBucket: "abs-2026.firebasestorage.app",
+  messagingSenderId: "94146490712",
+  appId: "1:94146490712:web:178f508710ec2ccc0ab52d",
+};
+const SHOP = {
+  name: "ABS CRACKERS WORLD", tagline: "Festival Fireworks Store",
+  addr1: "Chinnakamanpatti", addr2: "Sivakasi - 626189, Tamil Nadu.",
+  phone: "+91 9597189599", terms: "Goods once sold will not be taken back or exchanged.",
+  thanks: "Have a Safe & Prosperous Festival",
+};
+const PRODUCT_CACHE_KEY = "abs_voice_products_v1";
+const PRODUCT_CACHE_MS = 10 * 60 * 1000; // keeps Firestore reads low (free-tier quota)
+
+const $ = (id) => document.getElementById(id);
+const inr = (n) => "₹" + Math.round(n).toLocaleString("en-IN");
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch {} },
+};
+
+/* ───────────────────────── firebase ───────────────────────── */
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const auth = getAuth(app);
+let currentUser = null;
+
+/* ───────────────────────── matching engine ───────────────────────── */
+const STOP = new Set(["of","the","a","an","please","pls","one","piece","pieces","pcs","pc","nos","no","number","quantity","qty","box","boxes","packet","packets","pkt","pack","add","give","me","i","want","need","and","for","to","also","item","items","sets","set","dozen","அந்த","ஒரு","கொடு","போடு","வேண்டும்"]);
+const SPLIT_RE = /\s*(?:,|;|\.(?=\s)|\bthen\b|\bnext\b|\balso\b|\bplus\b|\band\b|\band then\b|மற்றும்|அப்புறம்|பிறகு|और)\s*/i;
+
+const NUM_WORDS = {
+  zero:0, one:1, two:2, to:2, too:2, three:3, four:4, for:4, five:5, six:6, seven:7, eight:8, nine:9, ten:10,
+  eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15, sixteen:16, seventeen:17, eighteen:18, nineteen:19,
+  twenty:20, thirty:30, forty:40, fifty:50, sixty:60, seventy:70, eighty:80, ninety:90,
+  // Tamil
+  "ஒன்று":1, "ஒரு":1, "இரண்டு":2, "மூன்று":3, "நான்கு":4, "ஐந்து":5, "ஆறு":6, "ஏழு":7, "எட்டு":8, "ஒன்பது":9, "பத்து":10,
+  "இருபது":20, "முப்பது":30, "நாற்பது":40, "ஐம்பது":50, "நூறு":100,
+  // Hindi
+  "एक":1, "दो":2, "तीन":3, "चार":4, "पांच":5, "पाँच":5, "छह":6, "सात":7, "आठ":8, "नौ":9, "दस":10, "बीस":20, "पचास":50, "सौ":100,
+};
+// "to"/"for"/"too" are ambiguous in English (“two”/“four” misheard) — only treated as numbers when no other number is present.
+const WEAK_NUM = new Set(["to","too","for"]);
+const MULT = { hundred:100, thousand:1000, "ஆயிரம்":1000 };
+
+/** Tamil script → rough Latin, so a Tamil-script transcript of an English product name can still match. */
+const TA_V = { "அ":"a","ஆ":"aa","இ":"i","ஈ":"ee","உ":"u","ஊ":"oo","எ":"e","ஏ":"e","ஐ":"ai","ஒ":"o","ஓ":"o","ஔ":"au" };
+const TA_S = { "ா":"aa","ி":"i","ீ":"ee","ு":"u","ூ":"oo","ெ":"e","ே":"e","ை":"ai","ொ":"o","ோ":"o","ௌ":"au" };
+const TA_C = { "க":"k","ங":"ng","ச":"s","ஞ":"ny","ட":"t","ண":"n","த":"th","ந":"n","ப":"p","ம":"m","ய":"y","ர":"r","ல":"l","வ":"v","ழ":"l","ள":"l","ற":"r","ன":"n","ஜ":"j","ஷ":"sh","ஸ":"s","ஹ":"h" };
+function tamilToLatin(s) {
+  let out = "";
+  const ch = [...s];
+  for (let i = 0; i < ch.length; i++) {
+    const c = ch[i];
+    if (TA_C[c]) {
+      const nx = ch[i + 1];
+      if (nx === "்") { out += TA_C[c]; i++; }
+      else if (TA_S[nx]) { out += TA_C[c] + TA_S[nx]; i++; }
+      else out += TA_C[c] + "a";
+    } else if (TA_V[c]) out += TA_V[c];
+    else if (c === "்" || TA_S[c]) { /* stray sign */ }
+    else out += c;
+  }
+  return out;
+}
+const hasIndic = (s) => /[஀-௿ऀ-ॿ]/.test(s);
+
+function normalize(s) {
+  return String(s || "").toLowerCase()
+    .replace(/[''`]/g, "").replace(/(\d)\s*(cm|mm|inch|in|x|shot|shots|star|sound|wala|vala|வாலா)\b/g, "$1$2")
+    .replace(/[^\p{L}\p{M}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
+}
+function stem(t) { return t.length > 3 && t.endsWith("s") && !t.endsWith("ss") ? t.slice(0, -1) : t; }
+/** consonant-skeleton "sounds-like" key for loose phonetic matching */
+function skeleton(t) {
+  let s = (hasIndic(t) ? tamilToLatin(t) : t).toLowerCase();
+  s = s.replace(/ph/g, "f").replace(/ck/g, "k").replace(/sh|ch|z/g, "s").replace(/th/g, "t").replace(/[cqg]/g, "k").replace(/w/g, "v").replace(/[bd]/g, (m) => (m === "b" ? "p" : "t"));
+  const first = s[0] || "";
+  s = first + s.slice(1).replace(/[aeiouy]/g, "");
+  return s.replace(/(.)\1+/g, "$1");
+}
+function lev(a, b) {
+  if (a === b) return 0;
+  const m = a.length, n = b.length;
+  if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++)
+      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[n];
+}
+function tokSim(a, b) {
+  if (a === b) return 1;
+  if (/^\d+/.test(a) || /^\d+/.test(b)) return 0; // numbers must match exactly
+  const la = Math.max(a.length, b.length);
+  let best = 1 - lev(a, b) / la;
+  if (a.length >= 3 && b.length >= 3 && (a.startsWith(b) || b.startsWith(a))) best = Math.max(best, 0.85);
+  const sa = skeleton(a), sb = skeleton(b);
+  if (sa.length >= 3 && sb.length >= 3) {
+    const k = 1 - lev(sa, sb) / Math.max(sa.length, sb.length);
+    best = Math.max(best, k * 0.92);
+  }
+  return best;
+}
+const MATCH_MIN = 0.74;
+
+let CATALOG = [];       // prepared products
+let IDF = new Map();    // token -> weight
+
+function tokensOf(s, dropStop = true) {
+  const t = normalize(s).split(" ").filter(Boolean).map(stem);
+  return dropStop ? t.filter((x) => !STOP.has(x)) : t;
+}
+function prepareCatalog(products) {
+  CATALOG = products.map((p) => {
+    const nameTok = tokensOf(p.name, false);
+    const taTok = p.nameTa ? tokensOf(p.nameTa, false) : [];
+    return { ...p, nameTok, taTok };
+  });
+  const df = new Map();
+  for (const p of CATALOG) for (const t of new Set([...p.nameTok, ...p.taTok])) df.set(t, (df.get(t) || 0) + 1);
+  IDF = new Map();
+  for (const [t, c] of df) IDF.set(t, Math.log(1 + CATALOG.length / c));
+}
+const idf = (t) => IDF.get(t) ?? 1.2;
+
+/** Score one product against query tokens: precision on what was said + recall on distinctive product words. */
+function scoreProduct(qTok, pTok) {
+  if (!qTok.length || !pTok.length) return 0;
+  let pNum = 0, pDen = 0, rNum = 0, rDen = 0;
+  for (const q of qTok) {
+    let best = 0, bt = null;
+    for (const t of pTok) { const s = tokSim(q, t); if (s > best) { best = s; bt = t; } }
+    const w = bt ? idf(bt) : 1;
+    pDen += w; if (best >= MATCH_MIN) pNum += w * best;
+  }
+  for (const t of pTok) {
+    let best = 0;
+    for (const q of qTok) best = Math.max(best, tokSim(q, t));
+    const w = idf(t);
+    rDen += w; if (best >= MATCH_MIN) rNum += w * best;
+  }
+  const P = pDen ? pNum / pDen : 0, R = rDen ? rNum / rDen : 0;
+  return 0.65 * P + 0.35 * R;
+}
+function rank(query) {
+  const qTok = tokensOf(query);
+  if (!qTok.length) return [];
+  const out = [];
+  for (const p of CATALOG) {
+    const s = Math.max(scoreProduct(qTok, p.nameTok.filter((t) => !STOP.has(t) || /^\d/.test(t))),
+                       p.taTok.length ? scoreProduct(qTok, p.taTok) : 0);
+    if (s > 0.2) out.push({ p, s });
+  }
+  out.sort((a, b) => b.s - a.s);
+  return out;
+}
+
+/* number extraction: returns [{value, start, end}] over token array */
+function findNumbers(tokens) {
+  const found = [];
+  const hasStrong = tokens.some((t) => /^\d+$/.test(t) || (NUM_WORDS[t] !== undefined && !WEAK_NUM.has(t)));
+  let i = 0;
+  while (i < tokens.length) {
+    const t = tokens[i];
+    if (/^\d+(\.\d+)?$/.test(t)) { found.push({ value: parseFloat(t), start: i, end: i }); i++; continue; }
+    const mx = t.match(/^(\d+)x$/); if (mx) { found.push({ value: +mx[1], start: i, end: i }); i++; continue; }
+    if (NUM_WORDS[t] !== undefined && !(WEAK_NUM.has(t) && hasStrong)) {
+      let val = NUM_WORDS[t], j = i + 1;
+      // compound: "twenty five", "two hundred", "one thousand five hundred"
+      let total = 0, cur = val;
+      while (j < tokens.length) {
+        const n = tokens[j];
+        if (MULT[n]) { cur = (cur || 1) * MULT[n]; if (MULT[n] >= 1000) { total += cur; cur = 0; } j++; }
+        else if (NUM_WORDS[n] !== undefined && !WEAK_NUM.has(n) && NUM_WORDS[n] < 10 && cur % 10 === 0 && cur > 0 && cur < 100) { cur += NUM_WORDS[n]; j++; }
+        else if (NUM_WORDS[n] !== undefined && !WEAK_NUM.has(n) && cur >= 100 && NUM_WORDS[n] < 100) { cur += NUM_WORDS[n]; j++; }
+        else break;
+      }
+      found.push({ value: total + cur, start: i, end: j - 1 });
+      i = j; continue;
+    }
+    i++;
+  }
+  return found;
+}
+
+/**
+ * Interpret one spoken phrase as {qty, product candidates}.
+ * Product names can contain numbers ("1000 wala", "5 star"), so we try
+ * "first number = qty", "last number = qty" and "no qty (1)" and keep the best match.
+ */
+function interpretPhrase(phrase) {
+  const raw = normalize(phrase).split(" ").filter(Boolean);
+  if (!raw.length) return null;
+  const nums = findNumbers(raw);
+  const cands = [];
+  const build = (qty, skip) => {
+    const rest = raw.filter((_, idx) => !skip || idx < skip.start || idx > skip.end);
+    const ranked = rank(rest.join(" "));
+    if (ranked.length) cands.push({ qty, ranked, bias: 0 });
+  };
+  // spoken numbers ("one thousand") rewritten as digits, for products whose NAME contains a number
+  const asDigits = [];
+  for (let i = 0; i < raw.length; i++) {
+    const n = nums.find((x) => x.start === i);
+    if (n) { asDigits.push(String(n.value)); i = n.end; } else asDigits.push(raw[i]);
+  }
+  if (nums.length) {
+    const first = nums[0], last = nums[nums.length - 1];
+    build(first.value, first);
+    if (last !== first) build(last.value, last);
+  }
+  { const ranked = rank(asDigits.join(" ")); if (ranked.length) cands.push({ qty: 1, ranked, bias: 0 }); }
+  if (!cands.length) return { qty: nums[0]?.value || 1, ranked: [] };
+  // preference: explicit qty gets a small bonus when its score is comparable
+  cands.forEach((c) => { c.top = c.ranked[0].s + (c.qty !== 1 || nums.length === 0 ? 0.03 : 0); });
+  cands.sort((a, b) => b.top - a.top);
+  // when number-as-part-of-name wins (qty=1 candidate) but a number was spoken, only keep it if clearly better
+  return cands[0];
+}
+
+/* ───────────────────────── bill state ───────────────────────── */
+let bill = [];      // {productId, name, unit, rate, qty, stock}
+let undoStack = [];
+const snapshot = () => { undoStack.push(JSON.stringify(bill)); if (undoStack.length > 40) undoStack.shift(); };
+let lastTouched = null;
+
+function addToBill(p, qty) {
+  snapshot();
+  const ex = bill.find((b) => b.productId === p.id);
+  if (ex) ex.qty += qty;
+  else bill.push({ productId: p.id, name: p.name, unit: p.unit, rate: p.sale || p.mrp || 0, qty, stockQty: p.stockQty, stock: p.stock });
+  lastTouched = p.id;
+  renderBill(p.id);
+}
+function totals() {
+  const sub = bill.reduce((s, b) => s + Math.round((Number(b.qty) || 0) * (Number(b.rate) || 0)), 0);
+  const pct = Number($("pkgPct").value) || 0;
+  const pkg = Math.round((sub * pct) / 100);
+  return { sub, pct, pkg, grand: Math.max(sub + pkg, 0) };
+}
+function renderBill(flashId) {
+  const body = $("billBody");
+  body.innerHTML = bill.map((b, i) => `
+    <tr data-i="${i}" class="${b.productId === flashId ? "flash" : ""}">
+      <td><div class="item-name">${esc(b.name)}</div>
+          <div class="item-sub">${b.unit ? esc(b.unit) : ""}${b.stock === "out" ? ' <span style="color:var(--bad)">· out of stock</span>' : b.stock === "low" ? ' <span style="color:var(--warn)">· low stock</span>' : ""}</div></td>
+      <td class="num"><span class="qty"><button data-act="dec">−</button><input type="number" min="1" value="${b.qty}" data-act="qty"><button data-act="inc">+</button></span></td>
+      <td class="num"><input class="rate-in" type="number" min="0" step="0.5" value="${b.rate}" data-act="rate"></td>
+      <td class="num">${inr(b.qty * b.rate)}</td>
+      <td class="num"><button class="x" data-act="del" title="Remove">✕</button></td>
+    </tr>`).join("");
+  $("billEmpty").style.display = bill.length ? "none" : "block";
+  const t = totals();
+  $("tSub").textContent = inr(t.sub); $("tPkg").textContent = inr(t.pkg); $("tGrand").textContent = inr(t.grand);
+  $("btnCreate").disabled = !bill.length;
+}
+$("billBody").addEventListener("click", (e) => {
+  const act = e.target.dataset.act; if (!act) return;
+  const i = +e.target.closest("tr").dataset.i; const b = bill[i];
+  if (act === "inc") { snapshot(); b.qty++; renderBill(); }
+  else if (act === "dec") { snapshot(); b.qty = Math.max(1, b.qty - 1); renderBill(); }
+  else if (act === "del") { snapshot(); bill.splice(i, 1); renderBill(); }
+});
+$("billBody").addEventListener("change", (e) => {
+  const act = e.target.dataset.act; if (!act) return;
+  const i = +e.target.closest("tr").dataset.i; const b = bill[i];
+  snapshot();
+  if (act === "qty") b.qty = Math.max(1, Math.round(+e.target.value) || 1);
+  if (act === "rate") b.rate = Math.max(0, +e.target.value || 0);
+  renderBill();
+});
+$("pkgPct").addEventListener("input", () => renderBill());
+function undo() { const s = undoStack.pop(); if (s) { bill = JSON.parse(s); renderBill(); toast("Undone"); } }
+function clearBill() { if (!bill.length) return; snapshot(); bill = []; lastTouched = null; renderBill(); }
+$("btnUndo").onclick = undo;
+$("btnClear").onclick = () => { if (!bill.length || confirm("Clear the whole bill?")) clearBill(); };
+
+/* ───────────────────────── command handling ───────────────────────── */
+const logEl = $("log");
+let logCount = 0;
+function logEntry(said, parts) {
+  if (!logCount) logEl.innerHTML = "";
+  logCount++;
+  const el = document.createElement("div");
+  el.className = "log-item";
+  el.innerHTML = `<div class="said">“${esc(said)}”</div><div class="res"></div>`;
+  const res = el.querySelector(".res");
+  for (const p of parts) res.append(p);
+  logEl.prepend(el);
+  while (logEl.children.length > 30) logEl.lastChild.remove();
+}
+const tag = (cls, text) => { const s = document.createElement("span"); s.className = "tag " + cls; s.textContent = text; return s; };
+const chip = (text, onClick) => { const b = document.createElement("button"); b.className = "chip"; b.textContent = text; b.onclick = () => { onClick(b); }; return b; };
+const note = (text) => { const s = document.createElement("span"); s.className = "hint"; s.textContent = text; return s; };
+
+const CMD = {
+  clear: /^(clear|reset|new bill|clear all|clear bill|cancel bill|அழி|அனைத்தையும் அழி|साफ)(?=\s|$)/,
+  undo: /^(undo|go back|revert|திரும்ப|वापस)(?=\s|$)/,
+  removeLast: /^(remove|delete|cancel|நீக்கு|हटाओ)\s*(last|that|it|this|கடைசி|आखिरी)?\s*(one|item)?$/,
+  remove: /^(remove|delete|cancel|take out|நீக்கு|हटाओ)\s+(.+)$/,
+  setQty: /^(?:make it|change it to|change to|set it to|set quantity to|set qty to|quantity|qty|actually|sorry)\s+(.+)$/,
+};
+
+function handleUtterance(text) {
+  const said = text.trim();
+  if (!said) return;
+  const low = normalize(said);
+  $("heard").textContent = said; $("heard").classList.add("has");
+
+  // ── commands
+  if (CMD.undo.test(low)) { undo(); return logEntry(said, [tag("ok", "Undone")]); }
+  if (CMD.clear.test(low)) { clearBill(); return logEntry(said, [tag("warn", "Bill cleared"), chip("Undo", () => undo())]); }
+  if (CMD.removeLast.test(low) && bill.length) {
+    snapshot(); const r = bill.pop(); renderBill(); return logEntry(said, [tag("warn", "Removed " + r.name), chip("Undo", () => undo())]);
+  }
+  const rm = low.match(CMD.remove);
+  if (rm) {
+    const q = tokensOf(rm[2]); let best = null, bs = 0;
+    for (const b of bill) {
+      const p = CATALOG.find((c) => c.id === b.productId);
+      const s = p ? Math.max(scoreProduct(q, p.nameTok), p.taTok.length ? scoreProduct(q, p.taTok) : 0) : 0;
+      if (s > bs) { bs = s; best = b; }
+    }
+    if (best && bs >= 0.5) { snapshot(); bill = bill.filter((b) => b !== best); renderBill(); return logEntry(said, [tag("warn", "Removed " + best.name), chip("Undo", () => undo())]); }
+    return logEntry(said, [tag("bad", "Not in the bill")]);
+  }
+  const sq = low.match(CMD.setQty);
+  if (sq && lastTouched) {
+    const n = findNumbers(sq[1].split(" "))[0];
+    const b = bill.find((x) => x.productId === lastTouched);
+    if (n && b) { snapshot(); b.qty = Math.max(1, Math.round(n.value)); renderBill(b.productId); return logEntry(said, [tag("ok", `${b.name} → ${b.qty}`)]); }
+  }
+
+  // ── products
+  const phrases = said.split(SPLIT_RE).map((s) => s.trim()).filter(Boolean);
+  const parts = [];
+  for (const ph of phrases) {
+    const it = interpretPhrase(ph);
+    if (!it || !it.ranked.length) { parts.push(tag("bad", `✗ “${ph}” — not found`)); beep(false); continue; }
+    const [top, second] = it.ranked;
+    const qty = Math.max(1, Math.round(it.qty));
+    const gap = top.s - (second ? second.s : 0);
+    if (top.s >= 0.78 && gap >= 0.1) {
+      addToBill(top.p, qty);
+      parts.push(tag("ok", `✓ ${qty} × ${top.p.name}`));
+      beep(true);
+    } else if (top.s >= 0.5) {
+      parts.push(tag("warn", `? ${qty} × which one?`));
+      for (const c of it.ranked.slice(0, 4)) {
+        parts.push(chip(c.p.name, (btn) => { addToBill(c.p, qty); btn.parentElement.innerHTML = ""; toast(`Added ${qty} × ${c.p.name}`); beep(true); }));
+      }
+      beep(false);
+    } else {
+      parts.push(tag("bad", `✗ “${ph}” — not found`));
+      for (const c of it.ranked.filter((x) => x.s >= 0.3).slice(0, 3)) {
+        parts.push(chip(c.p.name, (btn) => { addToBill(c.p, qty); btn.parentElement.innerHTML = ""; beep(true); }));
+      }
+      beep(false);
+    }
+  }
+  logEntry(said, parts);
+}
+
+/* ───────────────────────── speech recognition ───────────────────────── */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null, listening = false, wantListening = false, mode = "toggle", lastFinal = { t: "", at: 0 };
+$("supportNote").textContent = SR
+  ? "Works best in Chrome / Edge. Serve this file over https or localhost for a stable mic permission."
+  : "This browser has no speech recognition — use Chrome or Edge. You can still type products above.";
+
+function setMicUI(on) {
+  $("mic").classList.toggle("live", on);
+  $("mic").textContent = on ? "■" : "🎤";
+  $("micLabel").textContent = on ? (mode === "hold" ? "Listening… release to finish" : "Listening… tap to stop") : (mode === "hold" ? "Hold to talk" : "Tap to start listening");
+}
+/** Triggers the browser's own "Allow microphone?" prompt; resolves true when granted. */
+async function ensureMic() {
+  try {
+    const st = await navigator.permissions?.query({ name: "microphone" });
+    if (st && st.state === "denied") return showMicHelp();
+  } catch {}
+  if (!navigator.mediaDevices?.getUserMedia) return true; // let SpeechRecognition try on its own
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); // shows the Allow / Block prompt
+    stream.getTracks().forEach((t) => t.stop());
+    return true;
+  } catch (e) {
+    if (e.name === "NotFoundError") { toast("No microphone found on this device"); return false; }
+    return showMicHelp();
+  }
+}
+function showMicHelp() {
+  wantListening = false; setMicUI(false);
+  $("micFileNote").style.display = location.protocol === "file:" ? "block" : "none";
+  $("micModal").classList.add("open");
+  return false;
+}
+async function beginListening() {
+  wantListening = true;
+  if (await ensureMic()) startRec(); else wantListening = false;
+}
+$("micClose").onclick = () => $("micModal").classList.remove("open");
+$("micRetry").onclick = async () => { $("micModal").classList.remove("open"); await beginListening(); };
+
+function startRec() {
+  if (!SR) { toast("Speech recognition not supported in this browser"); return; }
+  if (listening) return;
+  rec = new SR();
+  rec.lang = $("lang").value;
+  rec.continuous = true;
+  rec.interimResults = true;
+  rec.maxAlternatives = 1;
+  rec.onstart = () => { listening = true; setMicUI(true); };
+  rec.onresult = (ev) => {
+    let interim = "";
+    for (let i = ev.resultIndex; i < ev.results.length; i++) {
+      const r = ev.results[i], txt = r[0].transcript;
+      if (r.isFinal) {
+        const t = txt.trim(), now = Date.now();
+        if (t && !(t === lastFinal.t && now - lastFinal.at < 900)) { // Android Chrome sometimes repeats finals
+          lastFinal = { t, at: now };
+          handleUtterance(t);
+        }
+      } else interim += txt;
+    }
+    if (interim) { $("heard").textContent = interim + " …"; $("heard").classList.add("has"); }
+  };
+  rec.onerror = (e) => {
+    if (e.error === "not-allowed" || e.error === "service-not-allowed") showMicHelp();
+    else if (e.error !== "no-speech" && e.error !== "aborted") toast("Mic error: " + e.error);
+  };
+  rec.onend = () => {
+    listening = false;
+    if (wantListening) { try { startRec(); } catch {} } // keep going through Chrome's auto-stop
+    else setMicUI(false);
+  };
+  try { rec.start(); } catch (e) { /* already started */ }
+}
+function stopRec() { wantListening = false; if (rec) { try { rec.stop(); } catch {} } setMicUI(false); }
+
+const mic = $("mic");
+mic.addEventListener("pointerdown", (e) => { if (mode === "hold") { e.preventDefault(); beginListening(); } });
+mic.addEventListener("pointerup", () => { if (mode === "hold") setTimeout(stopRec, 450); }); // small tail so the last word isn't cut
+mic.addEventListener("pointerleave", () => { if (mode === "hold" && wantListening) setTimeout(stopRec, 450); });
+mic.addEventListener("click", () => {
+  if (mode !== "toggle") return;
+  if (wantListening) stopRec(); else beginListening();
+});
+$("modeSeg").addEventListener("click", (e) => {
+  const m = e.target.dataset.mode; if (!m) return;
+  mode = m; stopRec();
+  [...$("modeSeg").children].forEach((b) => b.classList.toggle("on", b.dataset.mode === m));
+  store.set("abs_voice_mode", m); setMicUI(false);
+});
+$("lang").addEventListener("change", () => { store.set("abs_voice_lang", $("lang").value); if (wantListening) { stopRec(); setTimeout(beginListening, 300); } });
+const typedGo = () => { const v = $("typed").value; $("typed").value = ""; if (v.trim()) handleUtterance(v); };
+$("typedGo").onclick = typedGo;
+$("typed").addEventListener("keydown", (e) => { if (e.key === "Enter") typedGo(); });
+
+/* beeps for eyes-free feedback at a busy counter */
+let actx = null;
+function beep(ok) {
+  try {
+    actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+    const o = actx.createOscillator(), g = actx.createGain();
+    o.type = "sine"; o.frequency.value = ok ? 880 : 220; g.gain.value = 0.06;
+    o.connect(g); g.connect(actx.destination); o.start(); o.stop(actx.currentTime + (ok ? 0.09 : 0.22));
+  } catch {}
+}
+let toastTimer;
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 1800); }
+
+/* ───────────────────────── products from Firestore ───────────────────────── */
+function normalizeProduct(id, raw) {
+  const qty = Number(raw.stockQty ?? 99);
+  const stock = ["in", "low", "out"].includes(raw.stock) ? raw.stock : qty <= 0 ? "out" : qty <= 5 ? "low" : "in";
+  return {
+    id, name: raw.name || "Unnamed product", nameTa: raw.name_ta || raw.nameTa || "",
+    category: raw.category || "", unit: raw.unit || "",
+    mrp: Number(raw.mrp) || 0, sale: Number(raw.salePrice ?? raw.sale) || 0,
+    stock, stockQty: qty, hidden: !!raw.hidden, displayOrder: Number(raw.displayOrder ?? 0),
+  };
+}
+const DEMO = [
+  ["Sparkler 10cm Electric","Sparklers","box",30],["Sparkler 15cm Colour","Sparklers","box",55],["Flower Pot Big","Flower Pots","box",120],
+  ["Flower Pot Small","Flower Pots","box",70],["Ground Chakkar Big","Chakkar","box",85],["Ground Chakkar Special","Chakkar","box",110],
+  ["Rocket Bomb","Rockets","box",95],["Whistling Rocket","Rockets","box",140],["1000 Wala Garland","Crackers","pkt",420],
+  ["5000 Wala Garland","Crackers","pkt",1900],["Lakshmi Bomb","Bombs","pkt",60],["Atom Bomb","Bombs","pkt",75],
+  ["5 Star Pencil","Pencils","box",65],["Colour Matches","Matches","box",20],["Snake Tablet","Fun","box",15],
+  ["3 Sound Crackers","Crackers","box",90],["Fancy Sky Shot 5 Shot","Fancy","box",260],["Fancy Sky Shot 25 Shot","Fancy","box",1100],
+].map(([name, category, unit, sale], i) => ({ id: "demo" + i, name, category, unit, mrp: sale * 2, sale, stock: "in", stockQty: 50, hidden: false, displayOrder: i }));
+
+function setCatalog(list, label) {
+  const visible = list.filter((p) => !p.hidden).sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name));
+  prepareCatalog(visible);
+  $("dbDot").className = "dot on";
+  $("dbStatus").innerHTML = `<b>${visible.length}</b> products · ${esc(label)}`;
+  $("loadError").style.display = "none";
+}
+async function loadProducts(force = false) {
+  $("dbDot").className = "dot"; $("dbStatus").textContent = "Loading products…";
+  if (!force) {
+    try {
+      const c = JSON.parse(store.get(PRODUCT_CACHE_KEY) || "null");
+      if (c && Date.now() - c.at < PRODUCT_CACHE_MS && c.list?.length) { setCatalog(c.list, "cached"); return; }
+    } catch {}
+  }
+  try {
+    const snap = await getDocs(collection(db, "products"));
+    const list = snap.docs.map((d) => normalizeProduct(d.id, d.data()));
+    if (!list.length) throw new Error("The products collection is empty.");
+    store.set(PRODUCT_CACHE_KEY, JSON.stringify({ at: Date.now(), list }));
+    setCatalog(list, "live from Firestore");
+  } catch (err) {
+    $("dbDot").className = "dot err"; $("dbStatus").textContent = "Products not loaded";
+    const box = $("loadError");
+    box.style.display = "block";
+    box.innerHTML = `Couldn’t read products: <b>${esc(err.message || err)}</b> (check internet / Firestore rules). ` +
+      `<button class="btn" id="useDemo" style="margin-left:6px;padding:4px 10px">Use demo products</button>`;
+    $("useDemo").onclick = () => setCatalog(DEMO, "demo data");
+  }
+}
+$("btnRefresh").onclick = () => loadProducts(true);
+if (new URLSearchParams(location.search).has("demo")) setCatalog(DEMO, "demo data"); else loadProducts();
+
+/* ───────────────────────── auth (optional) ───────────────────────── */
+onAuthStateChanged(auth, (u) => {
+  currentUser = u;
+  $("authLabel").textContent = u ? u.email : "Not signed in";
+  $("authPill").querySelector(".dot").className = "dot" + (u ? " on" : "");
+  $("btnAuth").textContent = u ? "Account" : "Admin sign in";
+});
+const openAuth = () => { $("authErr").textContent = ""; $("authModal").classList.add("open"); };
+$("btnAuth").onclick = openAuth;
+$("authCancel").onclick = () => $("authModal").classList.remove("open");
+$("authOut").onclick = async () => { await signOut(auth); $("authModal").classList.remove("open"); };
+$("authGo").onclick = async () => {
+  $("authErr").textContent = "";
+  try { await signInWithEmailAndPassword(auth, $("authEmail").value.trim(), $("authPass").value); $("authPass").value = ""; $("authModal").classList.remove("open"); toast("Signed in"); }
+  catch (e) { $("authErr").textContent = (e.code || e.message || "Sign-in failed").replace("auth/", ""); }
+};
+
+/* ───────────────────────── invoice creation ───────────────────────── */
+function modeBanner() {
+  const test = $("testMode").checked;
+  $("modeBanner").innerHTML = test
+    ? `<div class="banner test">TEST MODE — nothing is saved to Firestore and no invoice number is used.</div>`
+    : `<div class="banner live">LIVE — “Create invoice” writes a real invoice to <b>${esc(firebaseConfig.projectId)}</b> (invoices collection).</div>`;
+  store.set("abs_voice_test", test ? "1" : "0");
+}
+$("testMode").addEventListener("change", () => {
+  if (!$("testMode").checked && !confirm("Turn OFF test mode? New invoices will be saved to your real Firestore.")) { $("testMode").checked = true; }
+  modeBanner();
+});
+if (store.get("abs_voice_test") === "0") $("testMode").checked = false;
+if (store.get("abs_voice_mode") === "hold") { mode = "hold"; [...$("modeSeg").children].forEach((b) => b.classList.toggle("on", b.dataset.mode === "hold")); }
+const savedLang = store.get("abs_voice_lang"); if (savedLang) $("lang").value = savedLang;
+modeBanner(); setMicUI(false); renderBill();
+
+async function reserveInvoiceNo() { // identical scheme to the website: ABSI + YYYYMMDD + 3-digit daily counter
+  const d = new Date();
+  const stamp = `${d.getFullYear()}${String(d.getMonth() + 1).padStart(2, "0")}${String(d.getDate()).padStart(2, "0")}`;
+  const ref = doc(db, "counters", `invoices_${stamp}`);
+  const seq = await runTransaction(db, async (tx) => {
+    const s = await tx.get(ref);
+    const next = (s.exists() ? s.data().value || 0 : 0) + 1;
+    tx.set(ref, { value: next, updatedAt: serverTimestamp() }, { merge: true });
+    return next;
+  });
+  return `ABSI${stamp}${String(seq).padStart(3, "0")}`;
+}
+
+let lastInvoice = null;
+$("btnCreate").onclick = async () => {
+  if (!bill.length) return;
+  const btn = $("btnCreate"); btn.disabled = true; const label = btn.textContent; btn.textContent = "Saving…";
+  const t = totals();
+  const items = bill.map((b, i) => ({
+    id: String(i + 1), productId: b.productId, description: b.name,
+    qty: Number(b.qty), rate: Number(b.rate), amount: Math.round(b.qty * b.rate),
+  }));
+  const customer = {
+    name: $("custName").value.trim() || "Walk-in Customer",
+    mobile: $("custMobile").value.trim(), address: "",
+  };
+  const base = {
+    source: "MANUAL", orderId: null, orderDocId: null, customer, items,
+    packagePercent: t.pct, subtotal: t.sub, packageAmount: t.pkg, grandTotal: t.grand,
+    paymentMode: $("payMode").value, transactionRef: $("txnRef").value.trim(), notes: $("notes").value.trim(),
+  };
+  try {
+    let invoiceNo, saved = false, docId = null;
+    if ($("testMode").checked) {
+      invoiceNo = "TEST-" + Date.now().toString().slice(-6);
+    } else {
+      invoiceNo = await reserveInvoiceNo();
+      const ref = await addDoc(collection(db, "invoices"), {
+        ...base, invoiceNo, date: serverTimestamp(), createdAt: serverTimestamp(), updatedAt: serverTimestamp(),
+        createdVia: "voice-billing",
+      });
+      saved = true; docId = ref.id;
+    }
+    lastInvoice = { ...base, invoiceNo, date: new Date(), saved, docId };
+    showDone(lastInvoice);
+  } catch (err) {
+    const denied = err?.code === "permission-denied";
+    toast(denied ? "Permission denied — sign in as admin" : "Save failed: " + (err.message || err));
+    if (denied) openAuth();
+  } finally { btn.textContent = label; btn.disabled = !bill.length; }
+};
+
+function receiptHTML(inv) {
+  const d = inv.date;
+  const when = d.toLocaleDateString("en-IN") + " " + d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
+  const rows = inv.items.map((it) =>
+    `<tr><td colspan="3">${esc(it.description)}</td></tr><tr><td>${it.qty} × ${it.rate}</td><td></td><td class="r">${it.amount}</td></tr>`).join("");
+  return `<div class="rc">
+    <h4>${esc(SHOP.name)}</h4>
+    <div class="c">${esc(SHOP.tagline)}<br>${esc(SHOP.addr1)}, ${esc(SHOP.addr2)}<br>Ph: ${esc(SHOP.phone)}</div>
+    <hr>
+    <div>Invoice: <b>${esc(inv.invoiceNo)}</b></div>
+    <div>Date: ${esc(when)}</div>
+    <div>Customer: ${esc(inv.customer.name)}${inv.customer.mobile ? " · " + esc(inv.customer.mobile) : ""}</div>
+    <hr>
+    <table style="width:100%">${rows}</table>
+    <hr>
+    <div class="tot"><span>Subtotal</span><span>${inv.subtotal}</span></div>
+    ${inv.packageAmount ? `<div class="tot"><span>Package ${inv.packagePercent}%</span><span>${inv.packageAmount}</span></div>` : ""}
+    <div class="tot big"><span>TOTAL</span><span>₹${inv.grandTotal}</span></div>
+    <div>Paid by: ${esc(inv.paymentMode)}${inv.transactionRef ? " (" + esc(inv.transactionRef) + ")" : ""}</div>
+    <hr>
+    <div class="c">${esc(SHOP.terms)}<br><b>${esc(SHOP.thanks)}</b></div>
+  </div>`;
+}
+function showDone(inv) {
+  $("doneTitle").textContent = inv.saved ? "Invoice saved ✓" : "Test invoice (not saved)";
+  $("doneSub").textContent = inv.saved ? `${inv.invoiceNo} is now in Firestore → invoices.` : "Test mode is ON — nothing was written to your database.";
+  const html = receiptHTML(inv);
+  $("donePreview").innerHTML = html; $("receipt").innerHTML = html;
+  $("doneModal").classList.add("open");
+}
+$("donePrint").onclick = () => window.print();
+$("doneNew").onclick = () => {
+  $("doneModal").classList.remove("open");
+  bill = []; undoStack = []; lastTouched = null; renderBill();
+  ["custName", "custMobile", "txnRef", "notes"].forEach((id) => ($(id).value = ""));
+  $("log").innerHTML = '<div class="hint">Nothing yet.</div>'; logCount = 0;
+  $("heard").textContent = "Say the next customer’s products…"; $("heard").classList.remove("has");
+};
+$("doneWa").onclick = () => {
+  const inv = lastInvoice; if (!inv) return;
+  const lines = inv.items.map((i) => `• ${i.description} — ${i.qty} × ${i.rate} = ${i.amount}`).join("\n");
+  const msg = `*${SHOP.name}*\nInvoice ${inv.invoiceNo}\n\n${lines}\n\nTotal: ₹${inv.grandTotal}\n${SHOP.thanks}`;
+  const num = inv.customer.mobile.replace(/\D/g, "");
+  const to = num.length === 10 ? "91" + num : num;
+  window.open(`https://wa.me/${to}?text=${encodeURIComponent(msg)}`, "_blank");
+};
+
+if (location.protocol === "file:") $("fileWarn").style.display = "block";
+
+// expose the parser for quick console tests
+window.__abs = { handleUtterance, interpretPhrase, rank, get bill() { return bill; } };
+</script>
+</body>
+</html>
