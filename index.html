@@ -93,6 +93,7 @@
   .switch{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);cursor:pointer;user-select:none}
   .switch input{accent-color:var(--orange);width:17px;height:17px}
   .hint{font-size:12.5px;color:var(--muted)}
+  .src{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:0 5px;margin-left:4px}
   code{background:var(--bg);border:1px solid var(--line);border-radius:5px;padding:0 5px;font-size:12px}
 
   /* modal */
@@ -131,6 +132,8 @@
     <span class="pill" id="authPill"><span class="dot"></span><b id="authLabel">Not signed in</b></span>
     <span class="sp"></span>
     <button class="btn ghost" id="btnRefresh" title="Reload products from Firestore">↻ Products</button>
+    <button class="btn ghost" id="btnTrain">🎓 Train</button>
+    <button class="btn ghost" id="btnSettings">⚙ Settings</button>
     <button class="btn ghost" id="btnAuth">Admin sign in</button>
   </header>
 
@@ -152,6 +155,7 @@
             <span class="hint">Language</span>
             <select id="lang">
               <option value="en-IN">English (India)</option>
+              <option value="auto">Auto (Groq only)</option>
               <option value="ta-IN">தமிழ் (Tamil)</option>
               <option value="hi-IN">हिन्दी</option>
             </select>
@@ -256,6 +260,35 @@
   </div>
 </div>
 
+<datalist id="prodList"></datalist>
+<div class="modal-bg" id="settingsModal"><div class="modal">
+  <h3>⚙ Voice settings</h3>
+  <div class="stack">
+    <div class="hint">Free <b>Groq</b> key from console.groq.com → API Keys. It is stored only in this browser. For a public shop deployment, put the key behind a small server function instead.</div>
+    <input type="password" id="sKey" placeholder="gsk_…" autocomplete="off">
+    <label class="switch"><input type="checkbox" id="sStt"> Use <b>Groq Whisper</b> for speech (much better than the browser’s)</label>
+    <label class="switch"><input type="checkbox" id="sLlm"> Use <b>Groq AI</b> to resolve unclear items</label>
+    <label class="switch"><input type="checkbox" id="sRead"> Read each added item aloud (use earphones)</label>
+    <div><label class="small">Speech model</label><input type="text" id="sSttModel" list="sttModels"></div>
+    <div><label class="small">AI model</label><input type="text" id="sLlmModel" list="llmModels"></div>
+    <datalist id="sttModels"><option value="whisper-large-v3-turbo"><option value="whisper-large-v3"></datalist>
+    <datalist id="llmModels"><option value="openai/gpt-oss-20b"><option value="openai/gpt-oss-120b"><option value="llama-3.3-70b-versatile"><option value="llama-3.1-8b-instant"></datalist>
+    <div id="sTestOut" class="hint"></div>
+    <div class="row sp-between"><button class="btn ghost" id="sClose">Close</button><div class="row"><button class="btn" id="sTest">Test</button><button class="btn primary" id="sSave">Save</button></div></div>
+  </div>
+</div></div>
+
+<div class="modal-bg" id="aliasModal"><div class="modal" style="max-width:620px">
+  <h3>🎓 Train the voice <span class="hint" id="aliasCount"></span></h3>
+  <div class="stack">
+    <div class="hint">Teach what your staff actually say. The app also learns by itself: whenever you tap the right product after a miss, that phrase is saved.</div>
+    <div class="row"><input type="text" id="aPhrase" placeholder='You say… e.g. "kuruvi" or "1000 wala"' style="flex:1;min-width:150px"><input type="text" id="aProd" list="prodList" placeholder="…means this product" style="flex:1.4;min-width:180px"><button class="btn" id="aAdd">Add</button></div>
+    <div class="row"><button class="btn" id="aGen">✨ Generate nicknames with AI</button><span class="hint" id="aStatus"></span></div>
+    <div class="log" id="aliasList" style="max-height:300px"></div>
+    <div class="row sp-between"><div class="row"><button class="btn ghost" id="aExport">Export</button><button class="btn ghost" id="aImport">Import</button><input type="file" id="aFile" accept="application/json" hidden></div><button class="btn primary" id="aClose">Done</button></div>
+  </div>
+</div></div>
+
 <div class="modal-bg" id="micModal">
   <div class="modal">
     <h3>🎤 Microphone is blocked</h3>
@@ -318,31 +351,37 @@ const db = getFirestore(app);
 const auth = getAuth(app);
 let currentUser = null;
 
+/* ───────────────────────── settings + learned aliases ───────────────────────── */
+const CFG_KEY = "abs_voice_cfg_v2", ALIAS_KEY = "abs_voice_aliases_v2";
+const cfg = (() => {
+  const d = { groqKey: "", useStt: false, useLlm: false, sttModel: "whisper-large-v3-turbo", llmModel: "openai/gpt-oss-20b", readback: false };
+  try { return { ...d, ...JSON.parse(store.get(CFG_KEY) || "{}") }; } catch { return d; }
+})();
+const saveCfg = () => store.set(CFG_KEY, JSON.stringify(cfg));
+// learned = taught by staff (exact-phrase shortcut); auto = AI-suggested nicknames (fuzzy hints only)
+let aliases = (() => { try { return { learned: [], auto: [], ...JSON.parse(store.get(ALIAS_KEY) || "{}") }; } catch { return { learned: [], auto: [] }; } })();
+const saveAliases = () => store.set(ALIAS_KEY, JSON.stringify(aliases));
+
 /* ───────────────────────── matching engine ───────────────────────── */
-const STOP = new Set(["of","the","a","an","please","pls","one","piece","pieces","pcs","pc","nos","no","number","quantity","qty","box","boxes","packet","packets","pkt","pack","add","give","me","i","want","need","and","for","to","also","item","items","sets","set","dozen","அந்த","ஒரு","கொடு","போடு","வேண்டும்"]);
-const SPLIT_RE = /\s*(?:,|;|\.(?=\s)|\bthen\b|\bnext\b|\balso\b|\bplus\b|\band\b|\band then\b|மற்றும்|அப்புறம்|பிறகு|और)\s*/i;
+const STOP = new Set(["of","the","a","an","please","pls","piece","pcs","pc","nos","no","number","quantity","qty","box","boxes","packet","packets","pkt","pack","add","give","me","i","want","need","and","for","to","also","item","items","set","sets","inch","wala","vala","waala","வாலா","dozen","ok","okay","yes","sir","bro","anna","அண்ணா","கொடு","போடு","வேண்டும்"]);
+const SYN = { dlx:"deluxe", dx:"deluxe", colour:"color", colours:"color", cr:"crackers", aerial:"arial", centimeter:"cm", centimetre:"cm", centimeters:"cm", centimetres:"cm", cms:"cm", pieces:"pcs", kilo:"kg", kilos:"kg", kilogram:"kg", bijli:"bijili", chakra:"chakkaram", chakkar:"chakkaram", chakri:"chakkaram", crackling:"crackling", sparklers:"sparkler", fountains:"fountain" };
+const SPLIT_RE = /\s*(?:,|;|\.(?=\s|$)|\bthen\b|\bnext\b|\balso\b|\bplus\b|\band\b|மற்றும்|அப்புறம்|பிறகு|और)\s*/i;
 
 const NUM_WORDS = {
-  zero:0, one:1, two:2, to:2, too:2, three:3, four:4, for:4, five:5, six:6, seven:7, eight:8, nine:9, ten:10,
-  eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15, sixteen:16, seventeen:17, eighteen:18, nineteen:19,
-  twenty:20, thirty:30, forty:40, fifty:50, sixty:60, seventy:70, eighty:80, ninety:90,
-  // Tamil
-  "ஒன்று":1, "ஒரு":1, "இரண்டு":2, "மூன்று":3, "நான்கு":4, "ஐந்து":5, "ஆறு":6, "ஏழு":7, "எட்டு":8, "ஒன்பது":9, "பத்து":10,
-  "இருபது":20, "முப்பது":30, "நாற்பது":40, "ஐம்பது":50, "நூறு":100,
-  // Hindi
+  zero:0, one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8, nine:9, ten:10, eleven:11, twelve:12, thirteen:13, fourteen:14, fifteen:15,
+  sixteen:16, seventeen:17, eighteen:18, nineteen:19, twenty:20, thirty:30, forty:40, fifty:50, sixty:60, seventy:70, eighty:80, ninety:90,
+  to:2, too:2, for:4,
+  "ஒன்று":1, "ஒரு":1, "இரண்டு":2, "மூன்று":3, "நான்கு":4, "ஐந்து":5, "ஆறு":6, "ஏழு":7, "எட்டு":8, "ஒன்பது":9, "பத்து":10, "இருபது":20, "முப்பது":30, "நாற்பது":40, "ஐம்பது":50, "நூறு":100,
   "एक":1, "दो":2, "तीन":3, "चार":4, "पांच":5, "पाँच":5, "छह":6, "सात":7, "आठ":8, "नौ":9, "दस":10, "बीस":20, "पचास":50, "सौ":100,
 };
-// "to"/"for"/"too" are ambiguous in English (“two”/“four” misheard) — only treated as numbers when no other number is present.
-const WEAK_NUM = new Set(["to","too","for"]);
-const MULT = { hundred:100, thousand:1000, "ஆயிரம்":1000 };
+const WEAK_NUM = new Set(["to", "too", "for"]); // “two/four” misheard — counted only when no clearer number exists
+const MULT = { hundred: 100, thousand: 1000, "ஆயிரம்": 1000 };
 
-/** Tamil script → rough Latin, so a Tamil-script transcript of an English product name can still match. */
 const TA_V = { "அ":"a","ஆ":"aa","இ":"i","ஈ":"ee","உ":"u","ஊ":"oo","எ":"e","ஏ":"e","ஐ":"ai","ஒ":"o","ஓ":"o","ஔ":"au" };
 const TA_S = { "ா":"aa","ி":"i","ீ":"ee","ு":"u","ூ":"oo","ெ":"e","ே":"e","ை":"ai","ொ":"o","ோ":"o","ௌ":"au" };
 const TA_C = { "க":"k","ங":"ng","ச":"s","ஞ":"ny","ட":"t","ண":"n","த":"th","ந":"n","ப":"p","ம":"m","ய":"y","ர":"r","ல":"l","வ":"v","ழ":"l","ள":"l","ற":"r","ன":"n","ஜ":"j","ஷ":"sh","ஸ":"s","ஹ":"h" };
 function tamilToLatin(s) {
-  let out = "";
-  const ch = [...s];
+  let out = ""; const ch = [...s];
   for (let i = 0; i < ch.length; i++) {
     const c = ch[i];
     if (TA_C[c]) {
@@ -358,113 +397,30 @@ function tamilToLatin(s) {
 }
 const hasIndic = (s) => /[஀-௿ऀ-ॿ]/.test(s);
 
-function normalize(s) {
-  return String(s || "").toLowerCase()
-    .replace(/[''`]/g, "").replace(/(\d)\s*(cm|mm|inch|in|x|shot|shots|star|sound|wala|vala|வாலா)\b/g, "$1$2")
-    .replace(/[^\p{L}\p{M}\p{N}\s]/gu, " ").replace(/\s+/g, " ").trim();
-}
-function stem(t) { return t.length > 3 && t.endsWith("s") && !t.endsWith("ss") ? t.slice(0, -1) : t; }
-/** consonant-skeleton "sounds-like" key for loose phonetic matching */
-function skeleton(t) {
-  let s = (hasIndic(t) ? tamilToLatin(t) : t).toLowerCase();
-  s = s.replace(/ph/g, "f").replace(/ck/g, "k").replace(/sh|ch|z/g, "s").replace(/th/g, "t").replace(/[cqg]/g, "k").replace(/w/g, "v").replace(/[bd]/g, (m) => (m === "b" ? "p" : "t"));
-  const first = s[0] || "";
-  s = first + s.slice(1).replace(/[aeiouy]/g, "");
-  return s.replace(/(.)\1+/g, "$1");
-}
-function lev(a, b) {
-  if (a === b) return 0;
-  const m = a.length, n = b.length;
-  if (!m) return n; if (!n) return m;
-  let prev = Array.from({ length: n + 1 }, (_, j) => j);
-  for (let i = 1; i <= m; i++) {
-    const cur = [i];
-    for (let j = 1; j <= n; j++)
-      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
-    prev = cur;
-  }
-  return prev[n];
-}
-function tokSim(a, b) {
-  if (a === b) return 1;
-  if (/^\d+/.test(a) || /^\d+/.test(b)) return 0; // numbers must match exactly
-  const la = Math.max(a.length, b.length);
-  let best = 1 - lev(a, b) / la;
-  if (a.length >= 3 && b.length >= 3 && (a.startsWith(b) || b.startsWith(a))) best = Math.max(best, 0.85);
-  const sa = skeleton(a), sb = skeleton(b);
-  if (sa.length >= 3 && sb.length >= 3) {
-    const k = 1 - lev(sa, sb) / Math.max(sa.length, sb.length);
-    best = Math.max(best, k * 0.92);
-  }
-  return best;
-}
-const MATCH_MIN = 0.74;
-
-let CATALOG = [];       // prepared products
-let IDF = new Map();    // token -> weight
-
-function tokensOf(s, dropStop = true) {
-  const t = normalize(s).split(" ").filter(Boolean).map(stem);
-  return dropStop ? t.filter((x) => !STOP.has(x)) : t;
-}
-function prepareCatalog(products) {
-  CATALOG = products.map((p) => {
-    const nameTok = tokensOf(p.name, false);
-    const taTok = p.nameTa ? tokensOf(p.nameTa, false) : [];
-    return { ...p, nameTok, taTok };
-  });
-  const df = new Map();
-  for (const p of CATALOG) for (const t of new Set([...p.nameTok, ...p.taTok])) df.set(t, (df.get(t) || 0) + 1);
-  IDF = new Map();
-  for (const [t, c] of df) IDF.set(t, Math.log(1 + CATALOG.length / c));
-}
-const idf = (t) => IDF.get(t) ?? 1.2;
-
-/** Score one product against query tokens: precision on what was said + recall on distinctive product words. */
-function scoreProduct(qTok, pTok) {
-  if (!qTok.length || !pTok.length) return 0;
-  let pNum = 0, pDen = 0, rNum = 0, rDen = 0;
-  for (const q of qTok) {
-    let best = 0, bt = null;
-    for (const t of pTok) { const s = tokSim(q, t); if (s > best) { best = s; bt = t; } }
-    const w = bt ? idf(bt) : 1;
-    pDen += w; if (best >= MATCH_MIN) pNum += w * best;
-  }
-  for (const t of pTok) {
-    let best = 0;
-    for (const q of qTok) best = Math.max(best, tokSim(q, t));
-    const w = idf(t);
-    rDen += w; if (best >= MATCH_MIN) rNum += w * best;
-  }
-  const P = pDen ? pNum / pDen : 0, R = rDen ? rNum / rDen : 0;
-  return 0.65 * P + 0.35 * R;
-}
-function rank(query) {
-  const qTok = tokensOf(query);
-  if (!qTok.length) return [];
-  const out = [];
-  for (const p of CATALOG) {
-    const s = Math.max(scoreProduct(qTok, p.nameTok.filter((t) => !STOP.has(t) || /^\d/.test(t))),
-                       p.taTok.length ? scoreProduct(qTok, p.taTok) : 0);
-    if (s > 0.2) out.push({ p, s });
-  }
-  out.sort((a, b) => b.s - a.s);
-  return out;
+/** lower-case, fractions (1 1/2 → 1.5, 1/4 → 0.25), "10cm" → "10 cm", "1k" kept, punctuation out. */
+function norm(s) {
+  s = String(s || "").toLowerCase().replace(/[‘’'`´]/g, "");
+  s = s.replace(/(\d+)\s*(?:and a half|and half)/g, (m, a) => String(+a + 0.5));
+  s = s.replace(/(\d+)\s+(\d+)\s*\/\s*(\d+)/g, (m, a, b, c) => String(+a + +b / +c));
+  s = s.replace(/(\d+)\s*\/\s*(\d+)/g, (m, b, c) => String(+b / +c));
+  s = s.replace(/\bhalf\b/g, "0.5").replace(/\bquarter\b/g, "0.25");
+  s = s.replace(/(\d+)\s*k\b/g, "$1k");
+  s = s.replace(/(\d+)([a-z஀-௿ऀ-ॿ]+)/g, (m, n, w) => (w === "k" ? m : n + " " + w));
+  s = s.replace(/[^\p{L}\p{M}\p{N}\s.]/gu, " ");
+  s = s.replace(/\.(?!\d)|(?<!\d)\./g, " ");
+  return s.replace(/\s+/g, " ").trim();
 }
 
-/* number extraction: returns [{value, start, end}] over token array */
+/** number spans in a token array: [{value,start,end}] (integers incl. "twenty five", "two hundred", "one thousand five hundred") */
 function findNumbers(tokens) {
   const found = [];
   const hasStrong = tokens.some((t) => /^\d+$/.test(t) || (NUM_WORDS[t] !== undefined && !WEAK_NUM.has(t)));
   let i = 0;
   while (i < tokens.length) {
     const t = tokens[i];
-    if (/^\d+(\.\d+)?$/.test(t)) { found.push({ value: parseFloat(t), start: i, end: i }); i++; continue; }
-    const mx = t.match(/^(\d+)x$/); if (mx) { found.push({ value: +mx[1], start: i, end: i }); i++; continue; }
+    if (/^\d+$/.test(t)) { found.push({ value: +t, start: i, end: i }); i++; continue; }
     if (NUM_WORDS[t] !== undefined && !(WEAK_NUM.has(t) && hasStrong)) {
-      let val = NUM_WORDS[t], j = i + 1;
-      // compound: "twenty five", "two hundred", "one thousand five hundred"
-      let total = 0, cur = val;
+      let j = i + 1, total = 0, cur = NUM_WORDS[t];
       while (j < tokens.length) {
         const n = tokens[j];
         if (MULT[n]) { cur = (cur || 1) * MULT[n]; if (MULT[n] >= 1000) { total += cur; cur = 0; } j++; }
@@ -479,40 +435,164 @@ function findNumbers(tokens) {
   }
   return found;
 }
+const canonNum = (t) => (/^\d+$/.test(t) && +t >= 1000 && +t % 1000 === 0 && +t <= 10000 ? +t / 1000 + "k" : t);
+const stem = (t) => (/^[a-z]+$/.test(t) && t.length > 3 && t.endsWith("s") && !t.endsWith("ss") ? t.slice(0, -1) : t);
+
+/** text → matching tokens: number words become digits, synonyms folded, stop-words dropped. */
+function tokenize(text) {
+  let t = norm(text).split(" ").filter(Boolean);
+  const nums = findNumbers(t), out = [];
+  for (let i = 0; i < t.length; i++) {
+    const n = nums.find((x) => x.start === i);
+    if (n) { out.push(canonNum(String(n.value))); i = n.end; } else out.push(t[i]);
+  }
+  return out.map((x) => stem(SYN[x] || x)).filter((x) => x && !STOP.has(x));
+}
+
+const skelCache = new Map();
+function skeleton(t) {
+  if (skelCache.has(t)) return skelCache.get(t);
+  let s = (hasIndic(t) ? tamilToLatin(t) : t).toLowerCase();
+  s = s.replace(/ph/g, "f").replace(/ck/g, "k").replace(/sh|ch|z/g, "s").replace(/th/g, "t").replace(/[cqg]/g, "k").replace(/w/g, "v").replace(/b/g, "p").replace(/d/g, "t");
+  s = (s[0] || "") + s.slice(1).replace(/[aeiouy]/g, "");
+  s = s.replace(/(.)\1+/g, "$1");
+  skelCache.set(t, s); return s;
+}
+function lev(a, b) {
+  if (a === b) return 0;
+  const m = a.length, n = b.length;
+  if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[n];
+}
+const isNum = (t) => /^\d/.test(t);
+function tokSim(a, b) {
+  if (a === b) return 1;
+  if (isNum(a) || isNum(b)) return 0; // numbers must match exactly (10 cm ≠ 15 cm)
+  let best = 1 - lev(a, b) / Math.max(a.length, b.length);
+  if (a.length >= 3 && b.length >= 3 && (a.startsWith(b) || b.startsWith(a))) best = Math.max(best, 0.85);
+  const sa = skeleton(a), sb = skeleton(b);
+  if (sa.length >= 3 && sb.length >= 3) best = Math.max(best, (1 - lev(sa, sb) / Math.max(sa.length, sb.length)) * 0.93);
+  return best;
+}
+const MATCH_MIN = 0.76;
+
+let CATALOG = [];
+let IDF = new Map();
+let ALIAS_EXACT = new Map(); // sorted-token key → product id (taught by staff)
+const aliasKey = (toks) => [...toks].sort().join(" ");
+const idf = (t) => IDF.get(t) ?? 1.3;
+
+function prepareCatalog(products) {
+  const byId = new Map();
+  CATALOG = products.map((p) => {
+    const v = [];
+    const nameT = tokenize(p.name), catT = tokenize(p.category + " " + p.name);
+    if (nameT.length) v.push(nameT);
+    v.push(catT);
+    if (p.nameTa) { const t = tokenize(p.nameTa); if (t.length) v.push(t); }
+    const rec = { ...p, variants: v };
+    byId.set(p.id, rec);
+    return rec;
+  });
+  ALIAS_EXACT = new Map();
+  for (const a of aliases.learned) {
+    const rec = byId.get(a.id); if (!rec) continue;
+    const t = tokenize(a.phrase); if (!t.length) continue;
+    rec.variants.push(t); ALIAS_EXACT.set(aliasKey(t), a.id);
+  }
+  for (const a of aliases.auto) { const rec = byId.get(a.id); const t = rec && tokenize(a.phrase); if (t && t.length) rec.variants.push(t); }
+  const df = new Map();
+  for (const p of CATALOG) for (const t of new Set(p.variants.flat())) df.set(t, (df.get(t) || 0) + 1);
+  IDF = new Map(); for (const [t, c] of df) IDF.set(t, Math.log(1 + CATALOG.length / c));
+}
+
+/** P = how much of what was SAID matches; R = how much of the (distinctive) product name was covered. */
+function scoreVariant(q, v) {
+  let pNum = 0, pDen = 0, rNum = 0, rDen = 0;
+  for (const x of q) {
+    let best = 0, bt = null;
+    for (const t of v) { const s = tokSim(x, t); if (s > best) { best = s; bt = t; } }
+    const w = bt ? idf(bt) : 1.3; pDen += w; if (best >= MATCH_MIN) pNum += w * best;
+  }
+  for (const t of v) {
+    let best = 0; for (const x of q) best = Math.max(best, tokSim(x, t));
+    const w = idf(t); rDen += w; if (best >= MATCH_MIN) rNum += w * best;
+  }
+  return 0.8 * (pDen ? pNum / pDen : 0) + 0.2 * (rDen ? rNum / rDen : 0);
+}
+function rankTokens(q) {
+  if (!q.length) return [];
+  const exact = ALIAS_EXACT.get(aliasKey(q));
+  const out = [];
+  for (const p of CATALOG) {
+    let s = 0;
+    for (const v of p.variants) { const x = scoreVariant(q, v); if (x > s) s = x; }
+    if (exact && p.id === exact) s = 1.5;
+    if (s > 0.2) out.push({ p, s });
+  }
+  return out.sort((a, b) => b.s - a.s);
+}
 
 /**
- * Interpret one spoken phrase as {qty, product candidates}.
- * Product names can contain numbers ("1000 wala", "5 star"), so we try
- * "first number = qty", "last number = qty" and "no qty (1)" and keep the best match.
+ * One spoken phrase → {qty, ranked, rest}. Product names contain numbers ("10 CM", "5 SHOT", "1K"),
+ * so we try: first number = quantity, last number = quantity, or no quantity at all — and keep the
+ * interpretation that points to ONE clear product.
  */
-function interpretPhrase(phrase) {
-  const raw = normalize(phrase).split(" ").filter(Boolean);
-  if (!raw.length) return null;
-  const nums = findNumbers(raw);
+function analyzePhrase(phrase) {
+  const toks = norm(phrase).split(" ").filter(Boolean);
+  if (!toks.length) return null;
+  const nums = findNumbers(toks).filter((n) => n.value >= 1 && n.value <= 999);
   const cands = [];
-  const build = (qty, skip) => {
-    const rest = raw.filter((_, idx) => !skip || idx < skip.start || idx > skip.end);
-    const ranked = rank(rest.join(" "));
-    if (ranked.length) cands.push({ qty, ranked, bias: 0 });
+  const add = (qty, rest, explicit) => {
+    const q = tokenize(rest.join(" ")); if (!q.length) return;
+    const ranked = rankTokens(q); if (!ranked.length) return;
+    const top = ranked[0].s, gap = top - (ranked[1] ? ranked[1].s : 0);
+    const plaus = qty > 100 ? 0.7 : qty > 50 ? 0.9 : 1; // bulk counts are rare; big numbers are usually part of a name (120 shot)
+    const factor = Math.max(0.35 + 0.65 * Math.min(1, gap / 0.07), top >= 0.98 ? 0.9 : 0);
+    const conf = Math.pow(Math.min(1, top), 3) * factor * (explicit ? 1.12 * plaus : 1);
+    cands.push({ qty, ranked, rest: q, conf, explicit });
   };
-  // spoken numbers ("one thousand") rewritten as digits, for products whose NAME contains a number
-  const asDigits = [];
-  for (let i = 0; i < raw.length; i++) {
-    const n = nums.find((x) => x.start === i);
-    if (n) { asDigits.push(String(n.value)); i = n.end; } else asDigits.push(raw[i]);
-  }
   if (nums.length) {
-    const first = nums[0], last = nums[nums.length - 1];
-    build(first.value, first);
-    if (last !== first) build(last.value, last);
+    const f = nums[0], l = nums[nums.length - 1];
+    add(f.value, toks.filter((_, i) => i < f.start || i > f.end), true);
+    if (l !== f) add(l.value, toks.filter((_, i) => i < l.start || i > l.end), true);
   }
-  { const ranked = rank(asDigits.join(" ")); if (ranked.length) cands.push({ qty: 1, ranked, bias: 0 }); }
-  if (!cands.length) return { qty: nums[0]?.value || 1, ranked: [] };
-  // preference: explicit qty gets a small bonus when its score is comparable
-  cands.forEach((c) => { c.top = c.ranked[0].s + (c.qty !== 1 || nums.length === 0 ? 0.03 : 0); });
-  cands.sort((a, b) => b.top - a.top);
-  // when number-as-part-of-name wins (qty=1 candidate) but a number was spoken, only keep it if clearly better
-  return cands[0];
+  add(1, toks, false);
+  if (!cands.length) return { phrase, qty: nums[0] ? nums[0].value : 1, ranked: [], rest: [], alts: [] };
+  cands.sort((a, b) => b.conf - a.conf);
+  let best = cands[0];
+  // same product either way ("4 hulk" = qty 4, or the 4-inch one?) → a leading/trailing spoken number is the quantity
+  if (!best.explicit) {
+    const e = cands.find((c) => c.explicit && c.ranked[0].p.id === best.ranked[0].p.id && c.ranked[0].s >= 0.82 && c.ranked[0].s - (c.ranked[1] ? c.ranked[1].s : 0) >= 0.07);
+    if (e) best = e;
+  }
+  return { phrase, ...best, alts: cands.filter((c) => c !== best) };
+}
+/** auto = safe to add silently · ask = show choices · weak/none = not understood */
+function decide(it) {
+  if (!it || !it.ranked.length) return { kind: "none" };
+  const [a, b] = it.ranked, gap = a.s - (b ? b.s : 0);
+  // two different readings of the numbers (which one is the quantity?) point at different products → don't guess
+  const conflict = it.explicit && a.s < 0.98 && (it.alts || []).some((x) => x.explicit && x.ranked[0].s >= 0.88 && x.ranked[0].p.id !== a.p.id);
+  if (conflict) return { kind: "ask" };
+  if (a.s >= 1.4 || (a.s >= 0.98 && gap >= 0.025) || (a.s >= 0.82 && gap >= 0.07)) return { kind: "auto", p: a.p };
+  if (a.s >= 0.5) return { kind: "ask" };
+  if (a.s >= 0.3) return { kind: "weak" };
+  return { kind: "none" };
+}
+function candidatePool(it, n = 8) {
+  const seen = new Set(), out = [];
+  for (const r of [...(it ? it.ranked.slice(0, n) : []), ...((it && it.alts) || []).flatMap((a) => a.ranked.slice(0, 3))]) {
+    if (r.s < 0.2 || seen.has(r.p.id)) continue; seen.add(r.p.id); out.push(r.p);
+    if (out.length >= n + 2) break;
+  }
+  return out;
 }
 
 /* ───────────────────────── bill state ───────────────────────── */
@@ -572,24 +652,105 @@ function clearBill() { if (!bill.length) return; snapshot(); bill = []; lastTouc
 $("btnUndo").onclick = undo;
 $("btnClear").onclick = () => { if (!bill.length || confirm("Clear the whole bill?")) clearBill(); };
 
-/* ───────────────────────── command handling ───────────────────────── */
+/* ───────────────────────── log / chips ───────────────────────── */
 const logEl = $("log");
 let logCount = 0;
-function logEntry(said, parts) {
+function newLog(said, src) {
   if (!logCount) logEl.innerHTML = "";
   logCount++;
   const el = document.createElement("div");
   el.className = "log-item";
-  el.innerHTML = `<div class="said">“${esc(said)}”</div><div class="res"></div>`;
-  const res = el.querySelector(".res");
-  for (const p of parts) res.append(p);
+  el.innerHTML = `<div class="said">“${esc(said)}”${src ? ` <span class="src">${esc(src)}</span>` : ""}</div><div class="res"></div>`;
   logEl.prepend(el);
   while (logEl.children.length > 30) logEl.lastChild.remove();
+  const res = el.querySelector(".res");
+  return { set(parts) { res.replaceChildren(...parts); } };
 }
 const tag = (cls, text) => { const s = document.createElement("span"); s.className = "tag " + cls; s.textContent = text; return s; };
-const chip = (text, onClick) => { const b = document.createElement("button"); b.className = "chip"; b.textContent = text; b.onclick = () => { onClick(b); }; return b; };
+const chip = (text, onClick) => { const b = document.createElement("button"); b.className = "chip"; b.textContent = text; b.onclick = () => onClick(b); return b; };
 const note = (text) => { const s = document.createElement("span"); s.className = "hint"; s.textContent = text; return s; };
+function speak(text) {
+  if (!cfg.readback || !window.speechSynthesis) return;
+  try { const u = new SpeechSynthesisUtterance(text); u.lang = "en-IN"; u.rate = 1.1; speechSynthesis.speak(u); } catch {}
+}
 
+/* ───────────────────────── teaching (aliases) ───────────────────────── */
+let CURRENT_LIST = [];
+function learnAlias(restTokens, productId) {
+  const t = (restTokens || []).filter((x) => !isNum(x) || x.endsWith("k"));
+  if (!t.length) return;
+  const phrase = t.join(" "), key = aliasKey(t);
+  aliases.learned = aliases.learned.filter((a) => aliasKey(tokenize(a.phrase)) !== key);
+  aliases.learned.push({ phrase, id: productId, at: Date.now() });
+  saveAliases(); prepareCatalog(CURRENT_LIST); renderAliasList();
+}
+function productName(id) { const p = CATALOG.find((c) => c.id === id); return p ? p.name : "(removed product)"; }
+
+/* ───────────────────────── Groq (optional) ───────────────────────── */
+const GROQ = "https://api.groq.com/openai/v1";
+async function groqFail(r) {
+  const t = await r.text().catch(() => "");
+  if (r.status === 401) { openSettings(); throw new Error("Invalid Groq API key"); }
+  if (r.status === 429) throw new Error("Groq rate limit — wait a few seconds");
+  throw new Error(`Groq ${r.status}: ${t.slice(0, 140)}`);
+}
+async function groqChat(messages, maxTokens = 600) {
+  const body = { model: cfg.llmModel, messages, temperature: 0, max_completion_tokens: maxTokens, response_format: { type: "json_object" } };
+  if (/gpt-oss/.test(cfg.llmModel)) body.reasoning_effort = "low";
+  const r = await fetch(GROQ + "/chat/completions", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Bearer " + cfg.groqKey }, body: JSON.stringify(body) });
+  if (!r.ok) await groqFail(r);
+  const j = await r.json();
+  return JSON.parse(j.choices[0].message.content);
+}
+const DOMAIN = "Shop: a fireworks/crackers retail shop in Sivakasi, Tamil Nadu. Staff speak noisy English / Tamil / Tanglish. Notes: '1k','2k','5k','10k' = 1000/2000/5000/10000-wala red magic crackers; 'chakkaram/chakkar' = ground chakkar; 'kuruvi','bijili','lakshmi','hulk','lion' are one-sound cracker names; 'big/special/deluxe(dlx)/brand/gold/premium' are variants; numbers like '10 cm','5 shot','(10 pcs)' belong to the product name, they are NOT the quantity.";
+
+/** AI judge for phrases the local matcher was unsure about. Returns [{i, c (catalogue index|null), q}] */
+async function llmResolve(items) {
+  let pool = []; const idx = new Map();
+  const anyNeeded = items.some((x) => !candidatePool(x.it).length);
+  const source = anyNeeded ? CATALOG : items.flatMap((x) => candidatePool(x.it));
+  for (const p of source) if (!idx.has(p.id)) { idx.set(p.id, pool.length); pool.push(p); }
+  const list = pool.map((p, i) => `${i}) ${p.name} [${p.category}]`).join("\n");
+  const phr = items.map((x, i) => {
+    const opts = anyNeeded && !candidatePool(x.it).length ? "ANY" : candidatePool(x.it).map((p) => idx.get(p.id)).join(",");
+    return `#${i} said: "${x.it ? x.it.phrase : x.ph}" | options: ${opts} | local quantity guess: ${x.it ? x.it.qty : 1}`;
+  }).join("\n");
+  const out = await groqChat([
+    { role: "system", content: `You resolve spoken order phrases to catalogue products. ${DOMAIN} Pick the ONE product meant, or null when unsure — never choose between near-identical variants by guessing. Also give the ordered quantity (a positive integer). Reply ONLY JSON: {"r":[{"i":0,"c":3,"q":2}]}` },
+    { role: "user", content: `Products:\n${list}\n\nPhrases:\n${phr}` },
+  ], 500);
+  return (out.r || []).map((x) => ({ i: +x.i, c: Number.isInteger(x.c) && pool[x.c] ? pool[x.c] : null, q: Math.max(1, Math.round(+x.q || 1)) }));
+}
+
+/** One-time “training”: ask the AI for the nicknames/spellings staff really use, then keep only unambiguous ones. */
+async function generateAliases(setStatus) {
+  const prods = CATALOG, chunk = 35, found = [];
+  for (let s = 0; s < prods.length; s += chunk) {
+    setStatus(`Asking AI… ${Math.min(s + chunk, prods.length)}/${prods.length}`);
+    const part = prods.slice(s, s + chunk);
+    const out = await groqChat([
+      { role: "system", content: `${DOMAIN} For each product give up to 4 SHORT (1-3 words) ways staff would really say or mis-say it aloud (nicknames, Tanglish spellings, common mis-hearings of the speech engine). Do not repeat the full official name, do not include quantities. Reply ONLY JSON: {"a":{"<index>":["nick1","nick2"]}}` },
+      { role: "user", content: part.map((p, i) => `${i}) ${p.name} [${p.category}]`).join("\n") },
+    ], 1800).catch(async (e) => { if (/rate limit/.test(e.message)) { setStatus("Rate limit — waiting 30s…"); await new Promise((r) => setTimeout(r, 30000)); return { a: {} }; } throw e; });
+    for (const [k, arr] of Object.entries(out.a || {})) { const p = part[+k]; if (p && Array.isArray(arr)) for (const ph of arr.slice(0, 4)) found.push({ phrase: String(ph).toLowerCase().trim(), id: p.id }); }
+    if (s + chunk < prods.length) await new Promise((r) => setTimeout(r, 9000)); // stay inside tokens-per-minute
+  }
+  // drop anything that could mean two products (or equals a real name token-set of another product)
+  const owners = new Map();
+  for (const f of found) { const t = tokenize(f.phrase); if (!t.length || t.every(isNum)) continue; const k = aliasKey(t); (owners.get(k) || owners.set(k, new Set()).get(k)).add(f.id); }
+  for (const p of CATALOG) for (const v of p.variants.slice(0, 2)) { const k = aliasKey(v); if (owners.has(k)) owners.get(k).add(p.id); }
+  const learnedKeys = new Set(aliases.learned.map((a) => aliasKey(tokenize(a.phrase))));
+  const keep = [], seen = new Set();
+  for (const f of found) {
+    const k = aliasKey(tokenize(f.phrase));
+    if (!owners.has(k) || owners.get(k).size !== 1 || learnedKeys.has(k) || seen.has(k + f.id)) continue;
+    seen.add(k + f.id); keep.push({ phrase: f.phrase, id: f.id });
+  }
+  aliases.auto = keep; saveAliases(); prepareCatalog(CURRENT_LIST); renderAliasList();
+  return keep.length;
+}
+
+/* ───────────────────────── command + product handling ───────────────────────── */
 const CMD = {
   clear: /^(clear|reset|new bill|clear all|clear bill|cancel bill|அழி|அனைத்தையும் அழி|साफ)(?=\s|$)/,
   undo: /^(undo|go back|revert|திரும்ப|वापस)(?=\s|$)/,
@@ -597,94 +758,103 @@ const CMD = {
   remove: /^(remove|delete|cancel|take out|நீக்கு|हटाओ)\s+(.+)$/,
   setQty: /^(?:make it|change it to|change to|set it to|set quantity to|set qty to|quantity|qty|actually|sorry)\s+(.+)$/,
 };
+const HALLUCINATIONS = /^(thank(s| you)( so much)?( for watching)?|you|bye|ok(ay)?|hmm+|uh+|um+|so|yeah|\.+|…|நன்றி|subtitles.*|please subscribe.*)\.?!?$/i;
 
-function handleUtterance(text) {
+function applyPick(p, qty, rest, src) {
+  addToBill(p, qty); learnAlias(rest, p.id); toast(`Added ${qty} × ${p.name}`); beep(true); speak(`${qty} ${p.name}`);
+}
+
+async function handleUtterance(text, src) {
   const said = text.trim();
   if (!said) return;
-  const low = normalize(said);
+  if (src && src !== "typed" && HALLUCINATIONS.test(said)) return;
+  const low = norm(said);
   $("heard").textContent = said; $("heard").classList.add("has");
+  const log = newLog(said, src);
 
   // ── commands
-  if (CMD.undo.test(low)) { undo(); return logEntry(said, [tag("ok", "Undone")]); }
-  if (CMD.clear.test(low)) { clearBill(); return logEntry(said, [tag("warn", "Bill cleared"), chip("Undo", () => undo())]); }
-  if (CMD.removeLast.test(low) && bill.length) {
-    snapshot(); const r = bill.pop(); renderBill(); return logEntry(said, [tag("warn", "Removed " + r.name), chip("Undo", () => undo())]);
-  }
+  if (CMD.undo.test(low)) { undo(); return log.set([tag("ok", "Undone")]); }
+  if (CMD.clear.test(low)) { clearBill(); return log.set([tag("warn", "Bill cleared"), chip("Undo", () => undo())]); }
+  if (CMD.removeLast.test(low) && bill.length) { snapshot(); const r = bill.pop(); renderBill(); return log.set([tag("warn", "Removed " + r.name), chip("Undo", () => undo())]); }
   const rm = low.match(CMD.remove);
   if (rm) {
-    const q = tokensOf(rm[2]); let best = null, bs = 0;
-    for (const b of bill) {
-      const p = CATALOG.find((c) => c.id === b.productId);
-      const s = p ? Math.max(scoreProduct(q, p.nameTok), p.taTok.length ? scoreProduct(q, p.taTok) : 0) : 0;
-      if (s > bs) { bs = s; best = b; }
-    }
-    if (best && bs >= 0.5) { snapshot(); bill = bill.filter((b) => b !== best); renderBill(); return logEntry(said, [tag("warn", "Removed " + best.name), chip("Undo", () => undo())]); }
-    return logEntry(said, [tag("bad", "Not in the bill")]);
+    const q = tokenize(rm[2]); let best = null, bs = 0;
+    for (const b of bill) { const p = CATALOG.find((c) => c.id === b.productId); if (!p) continue; const s = Math.max(...p.variants.map((v) => scoreVariant(q, v))); if (s > bs) { bs = s; best = b; } }
+    if (best && bs >= 0.5) { snapshot(); bill = bill.filter((b) => b !== best); renderBill(); return log.set([tag("warn", "Removed " + best.name), chip("Undo", () => undo())]); }
+    return log.set([tag("bad", "Not in the bill")]);
   }
   const sq = low.match(CMD.setQty);
   if (sq && lastTouched) {
-    const n = findNumbers(sq[1].split(" "))[0];
-    const b = bill.find((x) => x.productId === lastTouched);
-    if (n && b) { snapshot(); b.qty = Math.max(1, Math.round(n.value)); renderBill(b.productId); return logEntry(said, [tag("ok", `${b.name} → ${b.qty}`)]); }
+    const n = findNumbers(sq[1].split(" "))[0]; const b = bill.find((x) => x.productId === lastTouched);
+    if (n && b) { snapshot(); b.qty = Math.max(1, n.value); renderBill(b.productId); return log.set([tag("ok", `${b.name} → ${b.qty}`)]); }
   }
 
-  // ── products
+  // ── products: local matcher first
   const phrases = said.split(SPLIT_RE).map((s) => s.trim()).filter(Boolean);
+  const rows = phrases.map((ph) => { const it = analyzePhrase(ph); return { ph, it, d: decide(it) }; });
+
+  // ── AI judge only for the unsure ones
+  const unsure = rows.filter((r) => r.d.kind !== "auto");
+  if (cfg.useLlm && cfg.groqKey && unsure.length) {
+    log.set([tag("warn", "🤖 checking " + unsure.length + " item" + (unsure.length > 1 ? "s" : "") + "…")]);
+    try {
+      const res = await llmResolve(unsure);
+      for (const x of res) { const r = unsure[x.i]; if (r && x.c) r.ai = { p: x.c, qty: x.q }; }
+    } catch (e) { toast(e.message); }
+  }
+
+  // ── apply + render
   const parts = [];
-  for (const ph of phrases) {
-    const it = interpretPhrase(ph);
-    if (!it || !it.ranked.length) { parts.push(tag("bad", `✗ “${ph}” — not found`)); beep(false); continue; }
-    const [top, second] = it.ranked;
-    const qty = Math.max(1, Math.round(it.qty));
-    const gap = top.s - (second ? second.s : 0);
-    if (top.s >= 0.78 && gap >= 0.1) {
-      addToBill(top.p, qty);
-      parts.push(tag("ok", `✓ ${qty} × ${top.p.name}`));
+  for (const r of rows) {
+    const { ph, it, d } = r;
+    const rest = it ? it.rest : [];
+    const pool = candidatePool(it, 6);
+    const q = Math.max(1, Math.round(it ? it.qty : 1));
+    if (d.kind === "auto") {
+      addToBill(d.p, q); parts.push(tag("ok", `✓ ${q} × ${d.p.name}`)); beep(true); speak(`${q} ${d.p.name}`);
+    } else if (r.ai) {
+      const { p, qty } = r.ai;
+      addToBill(p, qty);
+      parts.push(tag("ok", `🤖 ${qty} × ${p.name}`)); beep(true); speak(`${qty} ${p.name}`);
+      const alts = pool.filter((x) => x.id !== p.id).slice(0, 3);
+      if (alts.length) parts.push(note("not it?"));
+      for (const a of alts) parts.push(chip(a.name, (btn) => {
+        const line = bill.find((b) => b.productId === p.id); // swap the AI pick for the right one
+        if (line) { snapshot(); line.qty -= qty; if (line.qty <= 0) bill = bill.filter((b) => b !== line); }
+        applyPick(a, qty, rest, src); btn.parentElement.replaceChildren(tag("ok", `✓ ${qty} × ${a.name}`));
+      }));
       beep(true);
-    } else if (top.s >= 0.5) {
-      parts.push(tag("warn", `? ${qty} × which one?`));
-      for (const c of it.ranked.slice(0, 4)) {
-        parts.push(chip(c.p.name, (btn) => { addToBill(c.p, qty); btn.parentElement.innerHTML = ""; toast(`Added ${qty} × ${c.p.name}`); beep(true); }));
-      }
-      beep(false);
+    } else if (d.kind === "ask" || d.kind === "weak") {
+      parts.push(tag("warn", `? ${q} × which one?`)); beep(false);
+      for (const c of pool.slice(0, 6)) parts.push(chip(c.name, (btn) => { applyPick(c, q, rest, src); btn.parentElement.replaceChildren(tag("ok", `✓ ${q} × ${c.name}`)); }));
     } else {
-      parts.push(tag("bad", `✗ “${ph}” — not found`));
-      for (const c of it.ranked.filter((x) => x.s >= 0.3).slice(0, 3)) {
-        parts.push(chip(c.p.name, (btn) => { addToBill(c.p, qty); btn.parentElement.innerHTML = ""; beep(true); }));
-      }
-      beep(false);
+      parts.push(tag("bad", `✗ “${ph}” — not found`)); beep(false);
     }
   }
-  logEntry(said, parts);
+  log.set(parts);
 }
 
-/* ───────────────────────── speech recognition ───────────────────────── */
+/* ───────────────────────── mic: browser recognition ───────────────────────── */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
 let rec = null, listening = false, wantListening = false, mode = "toggle", lastFinal = { t: "", at: 0 };
-$("supportNote").textContent = SR
-  ? "Works best in Chrome / Edge. Serve this file over https or localhost for a stable mic permission."
-  : "This browser has no speech recognition — use Chrome or Edge. You can still type products above.";
-
+const useGroqStt = () => cfg.useStt && cfg.groqKey && window.MediaRecorder;
+function refreshSupportNote() {
+  $("supportNote").textContent = useGroqStt()
+    ? "Engine: Groq Whisper (vocabulary-aware). Works in any modern browser."
+    : SR ? "Engine: browser speech recognition (Chrome/Edge). Turn on Groq Whisper in ⚙ Settings for better accuracy."
+         : "This browser has no speech recognition — use Chrome/Edge, or enable Groq Whisper in ⚙ Settings. Typing works too.";
+}
 function setMicUI(on) {
   $("mic").classList.toggle("live", on);
   $("mic").textContent = on ? "■" : "🎤";
   $("micLabel").textContent = on ? (mode === "hold" ? "Listening… release to finish" : "Listening… tap to stop") : (mode === "hold" ? "Hold to talk" : "Tap to start listening");
 }
-/** Triggers the browser's own "Allow microphone?" prompt; resolves true when granted. */
+
 async function ensureMic() {
-  try {
-    const st = await navigator.permissions?.query({ name: "microphone" });
-    if (st && st.state === "denied") return showMicHelp();
-  } catch {}
-  if (!navigator.mediaDevices?.getUserMedia) return true; // let SpeechRecognition try on its own
-  try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); // shows the Allow / Block prompt
-    stream.getTracks().forEach((t) => t.stop());
-    return true;
-  } catch (e) {
-    if (e.name === "NotFoundError") { toast("No microphone found on this device"); return false; }
-    return showMicHelp();
-  }
+  try { const st = await navigator.permissions?.query({ name: "microphone" }); if (st && st.state === "denied") return showMicHelp(); } catch {}
+  if (!navigator.mediaDevices?.getUserMedia) return true;
+  try { const s = await navigator.mediaDevices.getUserMedia({ audio: true }); s.getTracks().forEach((t) => t.stop()); return true; }
+  catch (e) { if (e.name === "NotFoundError") { toast("No microphone found on this device"); return false; } return showMicHelp(); }
 }
 function showMicHelp() {
   wantListening = false; setMicUI(false);
@@ -694,63 +864,122 @@ function showMicHelp() {
 }
 async function beginListening() {
   wantListening = true;
-  if (await ensureMic()) startRec(); else wantListening = false;
+  if (!(await ensureMic())) { wantListening = false; return; }
+  if (useGroqStt()) await startGroq(); else startRec();
 }
 $("micClose").onclick = () => $("micModal").classList.remove("open");
 $("micRetry").onclick = async () => { $("micModal").classList.remove("open"); await beginListening(); };
 
 function startRec() {
-  if (!SR) { toast("Speech recognition not supported in this browser"); return; }
+  if (!SR) { toast("No speech recognition here — enable Groq Whisper in ⚙ Settings"); wantListening = false; return; }
   if (listening) return;
   rec = new SR();
-  rec.lang = $("lang").value;
-  rec.continuous = true;
-  rec.interimResults = true;
-  rec.maxAlternatives = 1;
+  rec.lang = $("lang").value === "auto" ? "en-IN" : $("lang").value;
+  rec.continuous = true; rec.interimResults = true; rec.maxAlternatives = 3;
   rec.onstart = () => { listening = true; setMicUI(true); };
   rec.onresult = (ev) => {
     let interim = "";
     for (let i = ev.resultIndex; i < ev.results.length; i++) {
-      const r = ev.results[i], txt = r[0].transcript;
+      const r = ev.results[i];
       if (r.isFinal) {
-        const t = txt.trim(), now = Date.now();
-        if (t && !(t === lastFinal.t && now - lastFinal.at < 900)) { // Android Chrome sometimes repeats finals
-          lastFinal = { t, at: now };
-          handleUtterance(t);
+        // among the engine's alternatives, prefer the one that matches a product best
+        let txt = r[0].transcript.trim(), bestS = -1;
+        for (let k = 0; k < r.length; k++) {
+          const a = r[k].transcript.trim(); const it = analyzePhrase(a);
+          const s = it && it.ranked.length ? it.ranked[0].s : 0;
+          if (s > bestS + 0.05) { bestS = s; txt = a; }
         }
-      } else interim += txt;
+        const now = Date.now();
+        if (txt && !(txt === lastFinal.t && now - lastFinal.at < 900)) { lastFinal = { t: txt, at: now }; handleUtterance(txt, "browser"); }
+      } else interim += r[0].transcript;
     }
     if (interim) { $("heard").textContent = interim + " …"; $("heard").classList.add("has"); }
   };
-  rec.onerror = (e) => {
-    if (e.error === "not-allowed" || e.error === "service-not-allowed") showMicHelp();
-    else if (e.error !== "no-speech" && e.error !== "aborted") toast("Mic error: " + e.error);
-  };
-  rec.onend = () => {
-    listening = false;
-    if (wantListening) { try { startRec(); } catch {} } // keep going through Chrome's auto-stop
-    else setMicUI(false);
-  };
-  try { rec.start(); } catch (e) { /* already started */ }
+  rec.onerror = (e) => { if (e.error === "not-allowed" || e.error === "service-not-allowed") showMicHelp(); else if (e.error !== "no-speech" && e.error !== "aborted") toast("Mic error: " + e.error); };
+  rec.onend = () => { listening = false; if (wantListening && !gs) { try { startRec(); } catch {} } else if (!gs) setMicUI(false); };
+  try { rec.start(); } catch {}
 }
-function stopRec() { wantListening = false; if (rec) { try { rec.stop(); } catch {} } setMicUI(false); }
+
+/* ───────────────────────── mic: Groq Whisper ───────────────────────── */
+let gs = null, sttQueue = Promise.resolve();
+function vocabPrompt() {
+  const words = [], seen = new Set();
+  for (const p of CATALOG) for (const w of norm(p.name + " " + p.category).split(" ")) if (/^[a-z]{3,}$/.test(w) && !seen.has(w)) { seen.add(w); words.push(w); }
+  for (const a of aliases.learned.concat(aliases.auto)) for (const w of norm(a.phrase).split(" ")) if (/^[a-z]{3,}$/.test(w) && !seen.has(w)) { seen.add(w); words.push(w); }
+  return ("Fireworks crackers shop order. Quantity then item name, e.g. 2 flower pot big, 5 kuruvi, 3 ten cm electric sparklers. Items: " + words.join(", ")).slice(0, 760);
+}
+async function transcribe(blob) {
+  const fd = new FormData();
+  fd.append("file", blob, blob.type.includes("mp4") ? "speech.mp4" : "speech.webm");
+  fd.append("model", cfg.sttModel); fd.append("temperature", "0"); fd.append("response_format", "json");
+  const lang = $("lang").value; if (lang === "en-IN") fd.append("language", "en"); else if (lang === "ta-IN") fd.append("language", "ta"); else if (lang === "hi-IN") fd.append("language", "hi");
+  fd.append("prompt", vocabPrompt());
+  const r = await fetch(GROQ + "/audio/transcriptions", { method: "POST", headers: { Authorization: "Bearer " + cfg.groqKey }, body: fd });
+  if (!r.ok) await groqFail(r);
+  const t = ((await r.json()).text || "").trim();
+  return /Fireworks crackers shop order|Items:/i.test(t) ? "" : t; // prompt echo on near-silence
+}
+function enqueueAudio(blob) {
+  $("heard").textContent = "⏳ transcribing…"; $("heard").classList.add("has");
+  sttQueue = sttQueue.then(async () => { const t = await transcribe(blob); if (t) await handleUtterance(t, "Groq Whisper"); else $("heard").textContent = "(nothing heard)"; })
+    .catch((e) => toast(e.message));
+}
+async function startGroq() {
+  if (gs) return;
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } }); } catch { return showMicHelp(); }
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+  const an = ctx.createAnalyser(); an.fftSize = 1024; ctx.createMediaStreamSource(stream).connect(an);
+  gs = { stream, ctx, an, buf: new Uint8Array(an.fftSize), floor: 0.01, seg: null, closing: false, timer: setInterval(vadTick, 80) };
+  setMicUI(true); newSegment();
+}
+function newSegment() {
+  const g = gs; if (!g || g.closing) return;
+  const seg = { chunks: [], speech: false, silentSince: 0, start: Date.now(), stopping: false };
+  const mime = ["audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((m) => MediaRecorder.isTypeSupported(m)) || "";
+  const mr = new MediaRecorder(g.stream, mime ? { mimeType: mime } : {});
+  mr.ondataavailable = (e) => { if (e.data.size) seg.chunks.push(e.data); };
+  mr.onstop = () => {
+    const blob = new Blob(seg.chunks, { type: mr.mimeType || "audio/webm" });
+    if ((seg.speech || (mode === "hold" && Date.now() - seg.start > 500)) && blob.size > 1500) enqueueAudio(blob);
+    if (gs && !gs.closing) newSegment(); else finishGroq();
+  };
+  seg.mr = mr; g.seg = seg; mr.start();
+}
+function vadTick() {
+  const g = gs; if (!g || g.closing || !g.seg || g.seg.stopping) return;
+  g.an.getByteTimeDomainData(g.buf);
+  let sum = 0; for (const v of g.buf) { const x = (v - 128) / 128; sum += x * x; }
+  const rms = Math.sqrt(sum / g.buf.length), seg = g.seg, now = Date.now();
+  if (rms > Math.max(0.02, g.floor * 2.6)) { seg.speech = true; seg.silentSince = 0; }
+  else { g.floor = g.floor * 0.97 + rms * 0.03; if (seg.speech && !seg.silentSince) seg.silentSince = now; }
+  if (mode !== "toggle") return;                                   // hold-to-talk ends on release
+  const endOfSpeech = seg.speech && seg.silentSince && now - seg.silentSince > 1100;
+  if (endOfSpeech || now - seg.start > (seg.speech ? 25000 : 20000)) { seg.stopping = true; try { seg.mr.stop(); } catch {} }
+}
+function stopGroq() {
+  if (!gs) return; gs.closing = true;
+  const seg = gs.seg; if (seg && !seg.stopping) { seg.stopping = true; try { seg.mr.stop(); } catch { finishGroq(); } } else if (!seg) finishGroq();
+}
+function finishGroq() {
+  const g = gs; if (!g) return; gs = null;
+  clearInterval(g.timer); g.stream.getTracks().forEach((t) => t.stop()); try { g.ctx.close(); } catch {}
+  if (!wantListening) setMicUI(false);
+}
+function stopRec() { wantListening = false; if (gs) stopGroq(); if (rec) { try { rec.stop(); } catch {} } setMicUI(false); }
 
 const mic = $("mic");
 mic.addEventListener("pointerdown", (e) => { if (mode === "hold") { e.preventDefault(); beginListening(); } });
-mic.addEventListener("pointerup", () => { if (mode === "hold") setTimeout(stopRec, 450); }); // small tail so the last word isn't cut
+mic.addEventListener("pointerup", () => { if (mode === "hold") setTimeout(stopRec, 450); });
 mic.addEventListener("pointerleave", () => { if (mode === "hold" && wantListening) setTimeout(stopRec, 450); });
-mic.addEventListener("click", () => {
-  if (mode !== "toggle") return;
-  if (wantListening) stopRec(); else beginListening();
-});
+mic.addEventListener("click", () => { if (mode !== "toggle") return; if (wantListening) stopRec(); else beginListening(); });
 $("modeSeg").addEventListener("click", (e) => {
   const m = e.target.dataset.mode; if (!m) return;
-  mode = m; stopRec();
-  [...$("modeSeg").children].forEach((b) => b.classList.toggle("on", b.dataset.mode === m));
+  mode = m; stopRec(); [...$("modeSeg").children].forEach((b) => b.classList.toggle("on", b.dataset.mode === m));
   store.set("abs_voice_mode", m); setMicUI(false);
 });
 $("lang").addEventListener("change", () => { store.set("abs_voice_lang", $("lang").value); if (wantListening) { stopRec(); setTimeout(beginListening, 300); } });
-const typedGo = () => { const v = $("typed").value; $("typed").value = ""; if (v.trim()) handleUtterance(v); };
+const typedGo = () => { const v = $("typed").value; $("typed").value = ""; if (v.trim()) handleUtterance(v, "typed"); };
 $("typedGo").onclick = typedGo;
 $("typed").addEventListener("keydown", (e) => { if (e.key === "Enter") typedGo(); });
 
@@ -765,7 +994,66 @@ function beep(ok) {
   } catch {}
 }
 let toastTimer;
-function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 1800); }
+function toast(msg) { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 2200); }
+
+/* ───────────────────────── settings + training dialogs ───────────────────────── */
+function openSettings() {
+  $("sKey").value = cfg.groqKey; $("sStt").checked = cfg.useStt; $("sLlm").checked = cfg.useLlm; $("sRead").checked = cfg.readback;
+  $("sSttModel").value = cfg.sttModel; $("sLlmModel").value = cfg.llmModel; $("sTestOut").textContent = "";
+  $("settingsModal").classList.add("open");
+}
+$("btnSettings").onclick = openSettings;
+$("sClose").onclick = () => $("settingsModal").classList.remove("open");
+$("sSave").onclick = () => {
+  Object.assign(cfg, { groqKey: $("sKey").value.trim(), useStt: $("sStt").checked, useLlm: $("sLlm").checked, readback: $("sRead").checked, sttModel: $("sSttModel").value.trim() || "whisper-large-v3-turbo", llmModel: $("sLlmModel").value.trim() || "openai/gpt-oss-20b" });
+  if ((cfg.useStt || cfg.useLlm) && !cfg.groqKey) { cfg.useStt = cfg.useLlm = false; toast("Add a Groq API key first"); }
+  saveCfg(); refreshSupportNote(); $("settingsModal").classList.remove("open"); toast("Settings saved");
+};
+$("sTest").onclick = async () => {
+  const out = $("sTestOut"); out.style.color = "var(--muted)"; out.textContent = "Testing…";
+  try {
+    const keep = { k: cfg.groqKey, m: cfg.llmModel }; cfg.groqKey = $("sKey").value.trim(); cfg.llmModel = $("sLlmModel").value.trim() || cfg.llmModel;
+    const r = await groqChat([{ role: "user", content: 'Reply with JSON {"ok":true}' }], 60).finally(() => { cfg.groqKey = keep.k; cfg.llmModel = keep.m; });
+    out.style.color = "var(--ok)"; out.textContent = r.ok ? "✓ Key and model work" : "Reached Groq";
+  } catch (e) { out.style.color = "var(--bad)"; out.textContent = e.message; }
+};
+
+function renderAliasList() {
+  const rows = [...aliases.learned.map((a, i) => ({ ...a, kind: "taught", i })), ...aliases.auto.map((a, i) => ({ ...a, kind: "AI", i }))];
+  $("aliasCount").textContent = rows.length ? `${aliases.learned.length} taught · ${aliases.auto.length} AI-suggested` : "";
+  $("aliasList").innerHTML = rows.length ? rows.map((a) => `<div class="log-item row sp-between"><span><b>“${esc(a.phrase)}”</b> → ${esc(productName(a.id))} <span class="src">${a.kind}</span></span><button class="x" data-k="${a.kind}" data-i="${a.i}" title="Delete">✕</button></div>`).join("")
+    : '<div class="hint">Nothing yet. Every time you tap the right product after a miss, it is remembered here automatically.</div>';
+}
+$("aliasList").addEventListener("click", (e) => {
+  const k = e.target.dataset.k; if (!k) return;
+  (k === "taught" ? aliases.learned : aliases.auto).splice(+e.target.dataset.i, 1);
+  saveAliases(); prepareCatalog(CURRENT_LIST); renderAliasList();
+});
+$("btnTrain").onclick = () => { renderAliasList(); $("aliasModal").classList.add("open"); };
+$("aClose").onclick = () => $("aliasModal").classList.remove("open");
+$("aAdd").onclick = () => {
+  const phrase = $("aPhrase").value.trim(), name = $("aProd").value.trim().toLowerCase();
+  const p = CATALOG.find((c) => `${c.name} — ${c.category}`.toLowerCase() === name || c.name.toLowerCase() === name);
+  if (!phrase || !p) return toast("Type what you say, then pick a product from the list");
+  learnAlias(tokenize(phrase), p.id); $("aPhrase").value = ""; $("aProd").value = ""; toast("Learned");
+};
+$("aGen").onclick = async () => {
+  if (!cfg.groqKey) { toast("Add your Groq key in ⚙ Settings first"); return; }
+  if (!CATALOG.length) { toast("Load products first"); return; }
+  $("aGen").disabled = true;
+  try { const n = await generateAliases((s) => ($("aStatus").textContent = s)); $("aStatus").textContent = `Added ${n} AI nicknames (ambiguous ones were dropped).`; }
+  catch (e) { $("aStatus").textContent = e.message; } finally { $("aGen").disabled = false; }
+};
+$("aExport").onclick = () => {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(aliases, null, 1)], { type: "application/json" })); a.download = "abs-voice-aliases.json"; a.click();
+};
+$("aImport").onclick = () => $("aFile").click();
+$("aFile").onchange = async (e) => {
+  try { const j = JSON.parse(await e.target.files[0].text()); aliases = { learned: j.learned || [], auto: j.auto || [] }; saveAliases(); prepareCatalog(CURRENT_LIST); renderAliasList(); toast("Imported"); } catch { toast("Not a valid aliases file"); }
+};
+function fillProdList() {
+  $("prodList").innerHTML = CURRENT_LIST.map((p) => `<option value="${esc(p.name + " — " + p.category)}">`).join("");
+}
 
 /* ───────────────────────── products from Firestore ───────────────────────── */
 function normalizeProduct(id, raw) {
@@ -778,18 +1066,11 @@ function normalizeProduct(id, raw) {
     stock, stockQty: qty, hidden: !!raw.hidden, displayOrder: Number(raw.displayOrder ?? 0),
   };
 }
-const DEMO = [
-  ["Sparkler 10cm Electric","Sparklers","box",30],["Sparkler 15cm Colour","Sparklers","box",55],["Flower Pot Big","Flower Pots","box",120],
-  ["Flower Pot Small","Flower Pots","box",70],["Ground Chakkar Big","Chakkar","box",85],["Ground Chakkar Special","Chakkar","box",110],
-  ["Rocket Bomb","Rockets","box",95],["Whistling Rocket","Rockets","box",140],["1000 Wala Garland","Crackers","pkt",420],
-  ["5000 Wala Garland","Crackers","pkt",1900],["Lakshmi Bomb","Bombs","pkt",60],["Atom Bomb","Bombs","pkt",75],
-  ["5 Star Pencil","Pencils","box",65],["Colour Matches","Matches","box",20],["Snake Tablet","Fun","box",15],
-  ["3 Sound Crackers","Crackers","box",90],["Fancy Sky Shot 5 Shot","Fancy","box",260],["Fancy Sky Shot 25 Shot","Fancy","box",1100],
-].map(([name, category, unit, sale], i) => ({ id: "demo" + i, name, category, unit, mrp: sale * 2, sale, stock: "in", stockQty: 50, hidden: false, displayOrder: i }));
+const DEMO = [{"id": "demo0", "name": "10 CM ELECTRIC SPARKLERS", "nameTa": "10 CM எலக்ட்ரிக் ஸ்பார்க்லர்ஸ்", "category": "SPARKLERS", "unit": "1 BOX", "mrp": 150, "sale": 15, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 0}, {"id": "demo1", "name": "10 CM COLOR SPARKLERS", "nameTa": "10 CM கலர் ஸ்பார்க்லர்ஸ்", "category": "SPARKLERS", "unit": "1 BOX", "mrp": 200, "sale": 18, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 1}, {"id": "demo2", "name": "10 CM GREEN SPARKLERS", "nameTa": "10 CM கிரீன் ஸ்பார்க்லர்ஸ்", "category": "SPARKLERS", "unit": "1 BOX", "mrp": 250, "sale": 22, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 2}, {"id": "demo3", "name": "10 CM RED SPARKLERS", "nameTa": "10 CM ரெட் ஸ்பார்க்லர்ஸ்", "category": "SPARKLERS", "unit": "1 BOX", "mrp": 300, "sale": 28, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 3}, {"id": "demo4", "name": "15 CM ELECTRIC SPARKLERS", "nameTa": "15 CM எலக்ட்ரிக் ஸ்பார்க்லர்ஸ்", "category": "SPARKLERS", "unit": "1 BOX", "mrp": 300, "sale": 27, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 4}, {"id": "demo5", "name": "15 CM CRACKLING SPARKLERS", "nameTa": "15 CM கிராக்லிங் ஸ்பார்க்லர்ஸ்", "category": "SPARKLERS", "unit": "1 BOX", "mrp": 350, "sale": 32, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 5}, {"id": "demo6", "name": "15 CM GREEN SPARKLERS", "nameTa": "15 CM கிரீன் ஸ்பார்க்லர்ஸ்", "category": "SPARKLERS", "unit": "1 BOX", "mrp": 400, "sale": 38, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 6}, {"id": "demo7", "name": "15 CM RED SPARKLERS", "nameTa": "15 CM ரெட் ஸ்பார்க்லர்ஸ்", "category": "SPARKLERS", "unit": "1 BOX", "mrp": 450, "sale": 42, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 7}, {"id": "demo8", "name": "30 CM ELECTRIC SPARKLERS", "nameTa": "30 CM எலக்ட்ரிக் ஸ்பார்க்லர்ஸ்", "category": "SPARKLERS", "unit": "1 BOX", "mrp": 400, "sale": 27, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 8}, {"id": "demo9", "name": "30 CM CRACKLING SPARKLERS", "nameTa": "30 CM கிராக்லிங் ஸ்பார்க்லர்ஸ்", "category": "SPARKLERS", "unit": "1 BOX", "mrp": 450, "sale": 32, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 9}, {"id": "demo10", "name": "30 CM GREEN SPARKLERS", "nameTa": "30 CM கிரீன் ஸ்பார்க்லர்ஸ்", "category": "SPARKLERS", "unit": "1 BOX", "mrp": 500, "sale": 38, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 10}, {"id": "demo11", "name": "30 CM RED SPARKLERS", "nameTa": "30 CM ரெட் ஸ்பார்க்லர்ஸ்", "category": "SPARKLERS", "unit": "1 BOX", "mrp": 550, "sale": 42, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 11}, {"id": "demo12", "name": "50 CM ELECTRIC SPARKLERS", "nameTa": "50 CM எலக்ட்ரிக் ஸ்பார்க்லர்ஸ்", "category": "SPARKLERS", "unit": "1 BOX", "mrp": 1700, "sale": 95, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 12}, {"id": "demo13", "name": "50 CM COLOR SPARKLERS", "nameTa": "50 CM கலர் ஸ்பார்க்லர்ஸ்", "category": "SPARKLERS", "unit": "1 BOX", "mrp": 1900, "sale": 125, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 13}, {"id": "demo14", "name": "ROTATING SPARKLERS", "nameTa": "ரோட்டேட்டிங் ஸ்பார்க்லர்ஸ்", "category": "SPARKLERS", "unit": "1 BOX", "mrp": 2500, "sale": 155, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 14}, {"id": "demo15", "name": "CHAKKARAM BIG (10 PCS)", "nameTa": "சக்கரம் பிக் (10 பீஸ்)", "category": "GROUND CHAKKARAS", "unit": "1 BOX", "mrp": 350, "sale": 30, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 15}, {"id": "demo16", "name": "CHAKKARAM BIG (25 PCS)", "nameTa": "சக்கரம் பிக் (25 பீஸ்)", "category": "GROUND CHAKKARAS", "unit": "1 BOX", "mrp": 950, "sale": 55, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 16}, {"id": "demo17", "name": "CHAKKARAM SPECIAL", "nameTa": "சக்கரம் ஸ்பெஷல்", "category": "GROUND CHAKKARAS", "unit": "1 BOX", "mrp": 1100, "sale": 70, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 17}, {"id": "demo18", "name": "CHAKKARAM DELUXE", "nameTa": "சக்கரம் டீலக்ஸ்", "category": "GROUND CHAKKARAS", "unit": "1 BOX", "mrp": 1500, "sale": 95, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 18}, {"id": "demo19", "name": "FLOWER POT BIG", "nameTa": "ஃப்ளவர் பாட் பிக்", "category": "FLOWER POT", "unit": "1 BOX", "mrp": 700, "sale": 50, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 19}, {"id": "demo20", "name": "FLOWER POT SPECIAL", "nameTa": "ஃப்ளவர் பாட் ஸ்பெஷல்", "category": "FLOWER POT", "unit": "1 BOX", "mrp": 1000, "sale": 70, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 20}, {"id": "demo21", "name": "FLOWER POT ASHOKA", "nameTa": "ஃப்ளவர் பாட் அசோகா", "category": "FLOWER POT", "unit": "1 BOX", "mrp": 1600, "sale": 95, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 21}, {"id": "demo22", "name": "FLOWER POT DELUXE", "nameTa": "ஃப்ளவர் பாட் டீலக்ஸ்", "category": "FLOWER POT", "unit": "1 BOX", "mrp": 2500, "sale": 135, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 22}, {"id": "demo23", "name": "COLOR KOTI", "nameTa": "கலர் கோட்டி", "category": "FLOWER POT", "unit": "1 BOX", "mrp": 2500, "sale": 140, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 23}, {"id": "demo24", "name": "MEGA POT DLX", "nameTa": "மெகா பாட் டிஎல்எக்ஸ்", "category": "FLOWER POT", "unit": "1 BOX", "mrp": 7000, "sale": 450, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 24}, {"id": "demo25", "name": "1 1/2 TWINKLING STAR", "nameTa": "1 1/2 ட்விங்க்ளிங் ஸ்டார்", "category": "TWINKLING STAR", "unit": "1 BOX", "mrp": 300, "sale": 15, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 25}, {"id": "demo26", "name": "4' TWINKLING STAR DELUXE", "nameTa": "4' ட்விங்க்ளிங் ஸ்டார் டீலக்ஸ்", "category": "TWINKLING STAR", "unit": "1 BOX", "mrp": 800, "sale": 30, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 26}, {"id": "demo27", "name": "2 3/4 KURUVI", "nameTa": "2 3/4 குருவி", "category": "ONE SOUND CRACKERS", "unit": "1 PKT", "mrp": 80, "sale": 6, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 27}, {"id": "demo28", "name": "3 1/2 LAKSHMI", "nameTa": "3 1/2 லக்ஷ்மி", "category": "ONE SOUND CRACKERS", "unit": "1 PKT", "mrp": 180, "sale": 12, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 28}, {"id": "demo29", "name": "4' Lion", "nameTa": "", "category": "ONE SOUND CRACKERS", "unit": "1 PKT", "mrp": 250, "sale": 25, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 29}, {"id": "demo30", "name": "4' DELUXE HULK", "nameTa": "4' டீலக்ஸ் ஹல்க்", "category": "ONE SOUND CRACKERS", "unit": "1 PKT", "mrp": 300, "sale": 30, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 30}, {"id": "demo31", "name": "4' GOLD LAKSHMI DLX", "nameTa": "4' கோல்டு லக்ஷ்மி டிஎல்எக்ஸ்", "category": "ONE SOUND CRACKERS", "unit": "1 PKT", "mrp": 350, "sale": 32, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 31}, {"id": "demo32", "name": "6' LION DLX", "nameTa": "6' லயன் டிஎல்எக்ஸ்", "category": "ONE SOUND CRACKERS", "unit": "1 PKT", "mrp": 450, "sale": 50, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 32}, {"id": "demo33", "name": "BULLET (FOILS BOMB)", "nameTa": "புல்லட் (ஃபாயில்ஸ் பாம்)", "category": "BOMB", "unit": "1BOX", "mrp": 300, "sale": 25, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 33}, {"id": "demo34", "name": "HYDRO BOMB CLASSIC", "nameTa": "ஹைட்ரோ பாம் கிளாசிக்", "category": "BOMB", "unit": "1BOX", "mrp": 500, "sale": 46, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 34}, {"id": "demo35", "name": "HYDROGEN BOMB", "nameTa": "ஹைட்ரஜன் பாம்", "category": "BOMB", "unit": "1 BOX", "mrp": 750, "sale": 60, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 35}, {"id": "demo36", "name": "RED DRAGON DELUXE", "nameTa": "ரெட் டிராகன் டீலக்ஸ்", "category": "BOMB", "unit": "1BOX", "mrp": 1250, "sale": 90, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 36}, {"id": "demo37", "name": "CLASSIC ELEPHANT BOMB", "nameTa": "கிளாசிக் எலிஃபன்ட் பாம்", "category": "BOMB", "unit": "1 BOX", "mrp": 1900, "sale": 145, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 37}, {"id": "demo38", "name": "BADA BOMB ULTRA DLX", "nameTa": "படா பாம் அல்ட்ரா டிஎல்எக்ஸ்", "category": "BOMB", "unit": "1BOX", "mrp": 3500, "sale": 410, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 38}, {"id": "demo39", "name": "PAPER BOMB 1/4 KG", "nameTa": "பேப்பர் பாம் 1/4 KG", "category": "BOMB", "unit": "1 PCS", "mrp": 550, "sale": 35, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 39}, {"id": "demo40", "name": "PAPER BOMB 1/2 KG", "nameTa": "பேப்பர் பாம் 1/2 KG", "category": "BOMB", "unit": "1 PCS", "mrp": 1100, "sale": 70, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 40}, {"id": "demo41", "name": "PAPER BOMB 1 KG", "nameTa": "பேப்பர் பாம் 1 KG", "category": "BOMB", "unit": "1 PCS", "mrp": 2200, "sale": 140, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 41}, {"id": "demo42", "name": "28 GIANT", "nameTa": "28 ஜெயண்ட்", "category": "GIANT & DELUXE", "unit": "1 PKT", "mrp": 300, "sale": 25, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 42}, {"id": "demo43", "name": "56 GIANT", "nameTa": "56 ஜெயண்ட்", "category": "GIANT & DELUXE", "unit": "1 PKT", "mrp": 600, "sale": 56, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 43}, {"id": "demo44", "name": "50 DELUXE", "nameTa": "50 டீலக்ஸ்", "category": "GIANT & DELUXE", "unit": "1 PKT", "mrp": 1200, "sale": 80, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 44}, {"id": "demo45", "name": "4' 100 MEGA DELUXE", "nameTa": "4' 100 மெகா டீலக்ஸ்", "category": "GIANT & DELUXE", "unit": "1 PKT", "mrp": 2200, "sale": 160, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 45}, {"id": "demo46", "name": "1K", "nameTa": "1K", "category": "RED MAGIC CRACKERS", "unit": "1 BOX", "mrp": 2250, "sale": 119, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 46}, {"id": "demo47", "name": "2K", "nameTa": "2K", "category": "RED MAGIC CRACKERS", "unit": "1 BOX", "mrp": 3750, "sale": 345, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 47}, {"id": "demo48", "name": "5K", "nameTa": "5K", "category": "RED MAGIC CRACKERS", "unit": "1 BOX", "mrp": 7750, "sale": 650, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 48}, {"id": "demo49", "name": "10K", "nameTa": "10K", "category": "RED MAGIC CRACKERS", "unit": "1 BOX", "mrp": 17000, "sale": 1300, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 49}, {"id": "demo50", "name": "1K (BRAND)", "nameTa": "1K (பிராண்ட்)", "category": "RED MAGIC CRACKERS", "unit": "1 BOX", "mrp": 4000, "sale": 300, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 50}, {"id": "demo51", "name": "2K (BRAND)", "nameTa": "2K (பிராண்ட்)", "category": "RED MAGIC CRACKERS", "unit": "1 BOX", "mrp": 7000, "sale": 600, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 51}, {"id": "demo52", "name": "5K (BRAND)", "nameTa": "5K (பிராண்ட்)", "category": "RED MAGIC CRACKERS", "unit": "1 BOX", "mrp": 18000, "sale": 1800, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 52}, {"id": "demo53", "name": "10K (BRAND)", "nameTa": "10K (பிராண்ட்)", "category": "RED MAGIC CRACKERS", "unit": "1 BOX", "mrp": 27000, "sale": 2300, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 53}, {"id": "demo54", "name": "SKY SHOT", "nameTa": "ஸ்கை ஷாட்", "category": "MEGA FANCY OUT", "unit": "1 PCS", "mrp": 500, "sale": 30, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 54}, {"id": "demo55", "name": "2' ARIAL FANCY", "nameTa": "2' ஏரியல் ஃபேன்சி", "category": "MEGA FANCY OUT", "unit": "1 PCS", "mrp": 1500, "sale": 65, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 55}, {"id": "demo56", "name": "2' ARIAL FANCY (3 PCS)", "nameTa": "2' ஏரியல் ஃபேன்சி (3 பீஸ்)", "category": "MEGA FANCY OUT", "unit": "3 PCS", "mrp": 3500, "sale": 155, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 56}, {"id": "demo57", "name": "3 1/2 ARIAL FANCY", "nameTa": "3 1/2 ஏரியல் ஃபேன்சி", "category": "MEGA FANCY OUT", "unit": "1 PCS", "mrp": 3500, "sale": 185, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 57}, {"id": "demo58", "name": "3 1/2 GUN OUT (ULTRA SOUND)", "nameTa": "3 1/2 கன் அவுட் (அல்ட்ரா சவுண்ட்)", "category": "MEGA FANCY OUT", "unit": "1 PCS", "mrp": 4100, "sale": 210, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 58}, {"id": "demo59", "name": "4' ARIAL FANCY", "nameTa": "4' ஏரியல் ஃபேன்சி", "category": "MEGA FANCY OUT", "unit": "1 PCS", "mrp": 4750, "sale": 220, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 59}, {"id": "demo60", "name": "4' PIPE (ULTRA SHOW)", "nameTa": "4' பைப் (அல்ட்ரா ஷோ)", "category": "MEGA FANCY OUT", "unit": "1 PCS", "mrp": 6750, "sale": 350, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 60}, {"id": "demo61", "name": "5' PIPE FANCY", "nameTa": "5' பைப் ஃபேன்சி", "category": "MEGA FANCY OUT", "unit": "1 PCS", "mrp": 8500, "sale": 425, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 61}, {"id": "demo62", "name": "5' FANCY (ULTRA SHOW)", "nameTa": "5' ஃபேன்சி (அல்ட்ரா ஷோ)", "category": "MEGA FANCY OUT", "unit": "2 PCS", "mrp": 18500, "sale": 510, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 62}, {"id": "demo63", "name": "2' ARIAL FANCY (2 PCS)", "nameTa": "2' ஏரியல் ஃபேன்சி (2 பீஸ்)", "category": "MEGA FANCY OUT", "unit": "2 PCS", "mrp": 1000, "sale": 130, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 63}, {"id": "demo64", "name": "2 1/2' GAME OF THRONES (3 PCS)", "nameTa": "2 1/2' கேம் ஆஃப் த்ரோன்ஸ் (3 பீஸ்)", "category": "MEGA FANCY OUT", "unit": "3 PCS", "mrp": 3000, "sale": 450, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 64}, {"id": "demo65", "name": "3 1/2' HARRY POTTER (2 PCS)", "nameTa": "3 1/2' ஹாரி பாட்டர் (2 பீஸ்)", "category": "MEGA FANCY OUT", "unit": "2 PCS", "mrp": 3800, "sale": 480, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 65}, {"id": "demo66", "name": "12 SHOT", "nameTa": "12 ஷாட்", "category": "MULTI COLOUR SKY SHOT", "unit": "1 BOX", "mrp": 1750, "sale": 90, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 66}, {"id": "demo67", "name": "25 SHOT", "nameTa": "25 ஷாட்", "category": "MULTI COLOUR SKY SHOT", "unit": "1 BOX", "mrp": 2750, "sale": 160, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 67}, {"id": "demo68", "name": "30 SHOT MULTI COLOUR (GOLD)", "nameTa": "30 ஷாட் மல்டி கலர் (கோல்டு)", "category": "MULTI COLOUR SKY SHOT", "unit": "1 BOX", "mrp": 4500, "sale": 285, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 68}, {"id": "demo69", "name": "60 SHOT MULTI COLOUR (GOLD)", "nameTa": "60 ஷாட் மல்டி கலர் (கோல்டு)", "category": "MULTI COLOUR SKY SHOT", "unit": "1 BOX", "mrp": 9500, "sale": 570, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 69}, {"id": "demo70", "name": "120 SHOT MULTI COLOUR (GOLD)", "nameTa": "120 ஷாட் மல்டி கலர் (கோல்டு)", "category": "MULTI COLOUR SKY SHOT", "unit": "1 BOX", "mrp": 16750, "sale": 1140, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 70}, {"id": "demo71", "name": "240 SHOT MULTI COLOUR (GOLD)", "nameTa": "240 ஷாட் மல்டி கலர் (கோல்டு)", "category": "MULTI COLOUR SKY SHOT", "unit": "1 BOX", "mrp": 31250, "sale": 2499, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 71}, {"id": "demo72", "name": "30 SHOT MULTI COLOUR (PREMIUM)", "nameTa": "30 ஷாட் மல்டி கலர் (பிரீமியம்)", "category": "MULTI COLOUR SKY SHOT", "unit": "1 BOX", "mrp": 7500, "sale": 499, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 72}, {"id": "demo73", "name": "60 SHOT MULTI COLOUR (PREMIUM)", "nameTa": "60 ஷாட் மல்டி கலர் (பிரீமியம்)", "category": "MULTI COLOUR SKY SHOT", "unit": "1 BOX", "mrp": 17000, "sale": 999, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 73}, {"id": "demo74", "name": "120 SHOT MULTI COLOUR (PREMIUM)", "nameTa": "120 ஷாட் மல்டி கலர் (பிரீமியம்)", "category": "MULTI COLOUR SKY SHOT", "unit": "1 BOX", "mrp": 25000, "sale": 1999, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 74}, {"id": "demo75", "name": "240 SHOT MULTI COLOUR (PREMIUM)", "nameTa": "240 ஷாட் மல்டி கலர் (பிரீமியம்)", "category": "MULTI COLOUR SKY SHOT", "unit": "1 BOX", "mrp": 43000, "sale": 3699, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 75}, {"id": "demo76", "name": "HAND SHOT (50 SHOT)", "nameTa": "ஹேண்ட் ஷாட் (50 ஷாட்)", "category": "MULTI COLOUR SKY SHOT", "unit": "1 PCS", "mrp": 31250, "sale": 2999, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 76}, {"id": "demo77", "name": "KITKAT", "nameTa": "கிட்கேட்", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 270, "sale": 17, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 77}, {"id": "demo78", "name": "SNAKE TABLET", "nameTa": "ஸ்நேக் டேப்லெட்", "category": "FANCY FOUNTAINS", "unit": "1 PKT", "mrp": 250, "sale": 20, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 78}, {"id": "demo79", "name": "BUTTERFLY (10 PCS)", "nameTa": "பட்டர்ஃப்ளை (10 பீஸ்)", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 750, "sale": 77, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 79}, {"id": "demo80", "name": "GANGA JAMUNA", "nameTa": "கங்கா ஜமுனா", "category": "FANCY FOUNTAINS", "unit": "1 PCS", "mrp": 1000, "sale": 100, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 80}, {"id": "demo81", "name": "TOM & JERRY 5 PCS", "nameTa": "டாம் & ஜெர்ரி 5 பீஸ்", "category": "FANCY FOUNTAINS", "unit": "5 PCS", "mrp": 2000, "sale": 175, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 81}, {"id": "demo82", "name": "MASTER TREAT CRACKLING", "nameTa": "மாஸ்டர் ட்ரீட் கிராக்லிங்", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 1750, "sale": 145, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 82}, {"id": "demo83", "name": "Helicopter", "nameTa": "", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 1500, "sale": 75, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 83}, {"id": "demo84", "name": "DANCING BAMBARAM (5 PCS)", "nameTa": "டான்சிங் பம்பரம் (5 பீஸ்)", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 1500, "sale": 85, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 84}, {"id": "demo85", "name": "BINGO SHOWER (5 PCS)", "nameTa": "பிங்கோ ஷவர் (5 பீஸ்)", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 1500, "sale": 110, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 85}, {"id": "demo86", "name": "TIN BEER (RED, GREEN, CRACKLING)", "nameTa": "டின் பீர் (ரெட், கிரீன், கிராக்லிங்)", "category": "FANCY FOUNTAINS", "unit": "1 PCS", "mrp": 1200, "sale": 95, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 86}, {"id": "demo87", "name": "MAYAJAAL (5 PCS)", "nameTa": "மாயாஜால் (5 பீஸ்)", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 1600, "sale": 160, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 87}, {"id": "demo88", "name": "PEACOCK (RED, GREEN, GOLD)", "nameTa": "பீகாக் (ரெட், கிரீன், கோல்டு)", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 2000, "sale": 160, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 88}, {"id": "demo89", "name": "PENTA FANCY (5 PCS)", "nameTa": "பென்டா ஃபேன்சி (5 பீஸ்)", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 1750, "sale": 165, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 89}, {"id": "demo90", "name": "RAINBOW COLOUR SMOKE (3 PCS)", "nameTa": "ரெயின்போ கலர் ஸ்மோக் (3 பீஸ்)", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 2500, "sale": 155, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 90}, {"id": "demo91", "name": "MEGA SIREN (3 PCS)", "nameTa": "மெகா சைரன் (3 பீஸ்)", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 2500, "sale": 150, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 91}, {"id": "demo92", "name": "SILVER MOON", "nameTa": "சில்வர் மூன்", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 2000, "sale": 175, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 92}, {"id": "demo93", "name": "PHOTO FLASH (5 PCS)", "nameTa": "ஃபோட்டோ ஃப்ளாஷ் (5 பீஸ்)", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 850, "sale": 50, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 93}, {"id": "demo94", "name": "TRICOLOUR FOUNTAIN (5 PCS)", "nameTa": "ட்ரைகலர் ஃபவுண்டெயின் (5 பீஸ்)", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 2750, "sale": 250, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 94}, {"id": "demo95", "name": "FIRE EGG (2 PCS)", "nameTa": "ஃபயர் எக் (2 பீஸ்)", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 2000, "sale": 200, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 95}, {"id": "demo96", "name": "WATER QUEEN (COLD PYRO)", "nameTa": "வாட்டர் குயின் (கோல்ட் பைரோ)", "category": "FANCY FOUNTAINS", "unit": "1 PCS", "mrp": 3500, "sale": 400, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 96}, {"id": "demo97", "name": "BADA PEACOCK", "nameTa": "படா பீகாக்", "category": "FANCY FOUNTAINS", "unit": "1 PCS", "mrp": 4500, "sale": 330, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 97}, {"id": "demo98", "name": "MAGIC SHOW MONEY PAPER (2 PCS)", "nameTa": "மேஜிக் ஷோ மணி பேப்பர் (2 பீஸ்)", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 2750, "sale": 135, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 98}, {"id": "demo99", "name": "APPLE - MIX", "nameTa": "ஆப்பிள் - மிக்ஸ்", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 2750, "sale": 199, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 99}, {"id": "demo100", "name": "Shin chan (TRICOLOUR FOUNTAINS)", "nameTa": "ஷின் சான் (ட்ரைகலர் ஃபவுண்டெயின்ஸ்)", "category": "FANCY FOUNTAINS", "unit": "5 PCS", "mrp": 2600, "sale": 175, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 100}, {"id": "demo101", "name": "RAJAKALA MEGA FOUNTAIN", "nameTa": "ராஜகலா மெகா ஃபவுண்டெயின்", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 4000, "sale": 400, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 101}, {"id": "demo102", "name": "DHANDIYA PEACOCK", "nameTa": "தண்டியா பீகாக்", "category": "FANCY FOUNTAINS", "unit": "1 PCS", "mrp": 4500, "sale": 450, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 102}, {"id": "demo103", "name": "KURKURE MIX (10 SMOKE SHOT)", "nameTa": "குர்குரே மிக்ஸ் (10 ஸ்மோக் ஷாட்)", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 3500, "sale": 575, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 103}, {"id": "demo104", "name": "ORANGE FOUNTAIN", "nameTa": "ஆரஞ்ச் ஃபவுண்டெயின்", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 2750, "sale": 399, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 104}, {"id": "demo105", "name": "STRAWBERRY FOUNTAIN", "nameTa": "ஸ்ட்ராபெர்ரி ஃபவுண்டெயின்", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 2750, "sale": 399, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 105}, {"id": "demo106", "name": "PINEAPPLE FOUNTAIN", "nameTa": "பைனாப்பிள் ஃபவுண்டெயின்", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 2750, "sale": 399, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 106}, {"id": "demo107", "name": "PUMPKIN FOUNTAIN", "nameTa": "பம்ப்கின் ஃபவுண்டெயின்", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 2750, "sale": 399, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 107}, {"id": "demo108", "name": "CYLINDER BOMB", "nameTa": "சிலிண்டர் பாம்", "category": "FANCY FOUNTAINS", "unit": "1 PCS", "mrp": 3500, "sale": 110, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 108}, {"id": "demo109", "name": "WHITE HOUSE", "nameTa": "வைட் ஹவுஸ்", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 2500, "sale": 299, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 109}, {"id": "demo110", "name": "X Max (3 PCS)", "nameTa": "எக்ஸ் மேக்ஸ் (3 பீஸ்)", "category": "FANCY FOUNTAINS", "unit": "3 PCS", "mrp": 3100, "sale": 150, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 110}, {"id": "demo111", "name": "Ice Age Snow Flake", "nameTa": "ஐஸ் ஏஜ் ஸ்னோ ஃப்ளேக்", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 1750, "sale": 420, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 111}, {"id": "demo112", "name": "SKY WINGS MIX", "nameTa": "ஸ்கை விங்ஸ் மிக்ஸ்", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 1999, "sale": 199, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 112}, {"id": "demo113", "name": "CHIKOO BUNTY MIX", "nameTa": "சிக்கூ பன்டி மிக்ஸ்", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 2500, "sale": 250, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 113}, {"id": "demo114", "name": "SEA LASER MIX", "nameTa": "ஸீ லேசர் மிக்ஸ்", "category": "FANCY FOUNTAINS", "unit": "1 BOX", "mrp": 1999, "sale": 199, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 114}, {"id": "demo115", "name": "CHHOTU TRICOLOUR FOUNTAIN (5 PCS)", "nameTa": "சோட்டு ட்ரைகலர் ஃபவுண்டெயின் (5 பீஸ்)", "category": "FANCY FOUNTAINS", "unit": "5 PCS", "mrp": 1500, "sale": 199, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 115}, {"id": "demo116", "name": "VEL 2 PCS", "nameTa": "வேல் 2 பீஸ்", "category": "FANCY FOUNTAINS", "unit": "2 PCS", "mrp": 2500, "sale": 175, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 116}, {"id": "demo117", "name": "RED BIJILI 50 PCS (GOLD PKT)", "nameTa": "ரெட் பிஜிலி 50 பீஸ் (கோல்டு பாக்கெட்)", "category": "BIJILI", "unit": "1PKT", "mrp": 250, "sale": 25, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 117}, {"id": "demo118", "name": "RED BIJILI 100 PCS (GOLD PKT)", "nameTa": "ரெட் பிஜிலி 100 பீஸ் (கோல்டு பாக்கெட்)", "category": "BIJILI", "unit": "1PKT", "mrp": 500, "sale": 50, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 118}, {"id": "demo119", "name": "BABY ROCKET", "nameTa": "பேபி ராக்கெட்", "category": "ROCKET", "unit": "1 BOX", "mrp": 300, "sale": 30, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 119}, {"id": "demo120", "name": "BOMB ROCKET", "nameTa": "பாம் ராக்கெட்", "category": "ROCKET", "unit": "1 BOX", "mrp": 800, "sale": 100, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 120}, {"id": "demo121", "name": "LUNIC ROCKET", "nameTa": "லுனிக் ராக்கெட்", "category": "ROCKET", "unit": "1 BOX", "mrp": 1500, "sale": 170, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 121}, {"id": "demo122", "name": "WHISTLING ROCKET", "nameTa": "விஸ்லிங் ராக்கெட்", "category": "ROCKET", "unit": "1 BOX", "mrp": 1750, "sale": 200, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 122}, {"id": "demo123", "name": "GIFT BOX (18 ITEMS)", "nameTa": "கிஃப்ட் பாக்ஸ் (18 ஐட்டம்ஸ்)", "category": "GIFT BOX", "unit": "18 ITEMS", "mrp": 3500, "sale": 350, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 123}, {"id": "demo124", "name": "GIFT BOX (21 ITEMS)", "nameTa": "கிஃப்ட் பாக்ஸ் (21 ஐட்டம்ஸ்)", "category": "GIFT BOX", "unit": "21 ITEMS", "mrp": 4500, "sale": 450, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 124}, {"id": "demo125", "name": "GIFT BOX (30 ITEMS)", "nameTa": "கிஃப்ட் பாக்ஸ் (30 ஐட்டம்ஸ்)", "category": "GIFT BOX", "unit": "30 ITEMS", "mrp": 700, "sale": 700, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 125}, {"id": "demo126", "name": "GIFT BOX (40 ITEMS)", "nameTa": "கிஃப்ட் பாக்ஸ் (40 ஐட்டம்ஸ்)", "category": "GIFT BOX", "unit": "40 ITEMS", "mrp": 13500, "sale": 1350, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 126}, {"id": "demo127", "name": "GIFT BOX (50 ITEMS)", "nameTa": "கிஃப்ட் பாக்ஸ் (50 ஐட்டம்ஸ்)", "category": "GIFT BOX", "unit": "50 ITEMS", "mrp": 18000, "sale": 1800, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 127}, {"id": "demo128", "name": "GIFT BOX (60 ITEMS)", "nameTa": "கிஃப்ட் பாக்ஸ் (60 ஐட்டம்ஸ்)", "category": "GIFT BOX", "unit": "60 ITEMS", "mrp": 18000, "sale": 3000, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 128}, {"id": "demo129", "name": "ANNAM", "nameTa": "அன்னம்", "category": "MATCH BOX", "unit": "1 BOX", "mrp": 1000, "sale": 100, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 129}, {"id": "demo130", "name": "HERO (LAPTOP BOX)", "nameTa": "ஹீரோ (லேப்டாப் பாக்ஸ்)", "category": "MATCH BOX", "unit": "1 BOX", "mrp": 2000, "sale": 250, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 130}, {"id": "demo131", "name": "ROYAL SUPER MEGA", "nameTa": "ராயல் சூப்பர் மெகா", "category": "MATCH BOX", "unit": "1 BOX", "mrp": 3000, "sale": 350, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 131}, {"id": "demo132", "name": "GUN SMALL", "nameTa": "கன் ஸ்மால்", "category": "GUN", "unit": "1 PIECE", "mrp": 400, "sale": 60, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 132}, {"id": "demo133", "name": "GUN MEDIUM", "nameTa": "கன் மீடியம்", "category": "GUN", "unit": "1 PIECE", "mrp": 600, "sale": 80, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 133}, {"id": "demo134", "name": "GUN BIG", "nameTa": "கன் பிக்", "category": "GUN", "unit": "1 PIECE", "mrp": 900, "sale": 110, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 134}, {"id": "demo135", "name": "GUN BADA BIG", "nameTa": "கன் படா பிக்", "category": "GUN", "unit": "1 PIECE", "mrp": 1350, "sale": 150, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 135}, {"id": "demo136", "name": "ROLL CAP", "nameTa": "ரோல் கேப்", "category": "GUN", "unit": "1 PIECE", "mrp": 100, "sale": 10, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 136}, {"id": "demo137", "name": "RING CAP", "nameTa": "ரிங் கேப்", "category": "GUN", "unit": "1 PKT", "mrp": 80, "sale": 10, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 137}, {"id": "demo138", "name": "POP-POP", "nameTa": "பாப்-பாப்", "category": "GUN", "unit": "1 BOX", "mrp": 100, "sale": 10, "stock": "in", "stockQty": 50, "hidden": false, "displayOrder": 138}];
 
 function setCatalog(list, label) {
   const visible = list.filter((p) => !p.hidden).sort((a, b) => a.displayOrder - b.displayOrder || a.name.localeCompare(b.name));
-  prepareCatalog(visible);
+  CURRENT_LIST = visible; prepareCatalog(visible); fillProdList(); renderAliasList();
   $("dbDot").className = "dot on";
   $("dbStatus").innerHTML = `<b>${visible.length}</b> products · ${esc(label)}`;
   $("loadError").style.display = "none";
@@ -852,7 +1133,7 @@ $("testMode").addEventListener("change", () => {
 if (store.get("abs_voice_test") === "0") $("testMode").checked = false;
 if (store.get("abs_voice_mode") === "hold") { mode = "hold"; [...$("modeSeg").children].forEach((b) => b.classList.toggle("on", b.dataset.mode === "hold")); }
 const savedLang = store.get("abs_voice_lang"); if (savedLang) $("lang").value = savedLang;
-modeBanner(); setMicUI(false); renderBill();
+modeBanner(); setMicUI(false); renderBill(); refreshSupportNote();
 
 async function reserveInvoiceNo() { // identical scheme to the website: ABSI + YYYYMMDD + 3-digit daily counter
   const d = new Date();
@@ -897,66 +1178,4 @@ $("btnCreate").onclick = async () => {
       });
       saved = true; docId = ref.id;
     }
-    lastInvoice = { ...base, invoiceNo, date: new Date(), saved, docId };
-    showDone(lastInvoice);
-  } catch (err) {
-    const denied = err?.code === "permission-denied";
-    toast(denied ? "Permission denied — sign in as admin" : "Save failed: " + (err.message || err));
-    if (denied) openAuth();
-  } finally { btn.textContent = label; btn.disabled = !bill.length; }
-};
-
-function receiptHTML(inv) {
-  const d = inv.date;
-  const when = d.toLocaleDateString("en-IN") + " " + d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" });
-  const rows = inv.items.map((it) =>
-    `<tr><td colspan="3">${esc(it.description)}</td></tr><tr><td>${it.qty} × ${it.rate}</td><td></td><td class="r">${it.amount}</td></tr>`).join("");
-  return `<div class="rc">
-    <h4>${esc(SHOP.name)}</h4>
-    <div class="c">${esc(SHOP.tagline)}<br>${esc(SHOP.addr1)}, ${esc(SHOP.addr2)}<br>Ph: ${esc(SHOP.phone)}</div>
-    <hr>
-    <div>Invoice: <b>${esc(inv.invoiceNo)}</b></div>
-    <div>Date: ${esc(when)}</div>
-    <div>Customer: ${esc(inv.customer.name)}${inv.customer.mobile ? " · " + esc(inv.customer.mobile) : ""}</div>
-    <hr>
-    <table style="width:100%">${rows}</table>
-    <hr>
-    <div class="tot"><span>Subtotal</span><span>${inv.subtotal}</span></div>
-    ${inv.packageAmount ? `<div class="tot"><span>Package ${inv.packagePercent}%</span><span>${inv.packageAmount}</span></div>` : ""}
-    <div class="tot big"><span>TOTAL</span><span>₹${inv.grandTotal}</span></div>
-    <div>Paid by: ${esc(inv.paymentMode)}${inv.transactionRef ? " (" + esc(inv.transactionRef) + ")" : ""}</div>
-    <hr>
-    <div class="c">${esc(SHOP.terms)}<br><b>${esc(SHOP.thanks)}</b></div>
-  </div>`;
-}
-function showDone(inv) {
-  $("doneTitle").textContent = inv.saved ? "Invoice saved ✓" : "Test invoice (not saved)";
-  $("doneSub").textContent = inv.saved ? `${inv.invoiceNo} is now in Firestore → invoices.` : "Test mode is ON — nothing was written to your database.";
-  const html = receiptHTML(inv);
-  $("donePreview").innerHTML = html; $("receipt").innerHTML = html;
-  $("doneModal").classList.add("open");
-}
-$("donePrint").onclick = () => window.print();
-$("doneNew").onclick = () => {
-  $("doneModal").classList.remove("open");
-  bill = []; undoStack = []; lastTouched = null; renderBill();
-  ["custName", "custMobile", "txnRef", "notes"].forEach((id) => ($(id).value = ""));
-  $("log").innerHTML = '<div class="hint">Nothing yet.</div>'; logCount = 0;
-  $("heard").textContent = "Say the next customer’s products…"; $("heard").classList.remove("has");
-};
-$("doneWa").onclick = () => {
-  const inv = lastInvoice; if (!inv) return;
-  const lines = inv.items.map((i) => `• ${i.description} — ${i.qty} × ${i.rate} = ${i.amount}`).join("\n");
-  const msg = `*${SHOP.name}*\nInvoice ${inv.invoiceNo}\n\n${lines}\n\nTotal: ₹${inv.grandTotal}\n${SHOP.thanks}`;
-  const num = inv.customer.mobile.replace(/\D/g, "");
-  const to = num.length === 10 ? "91" + num : num;
-  window.open(`https://wa.me/${to}?text=${encodeURIComponent(msg)}`, "_blank");
-};
-
-if (location.protocol === "file:") $("fileWarn").style.display = "block";
-
-// expose the parser for quick console tests
-window.__abs = { handleUtterance, interpretPhrase, rank, get bill() { return bill; } };
-</script>
-</body>
-</html>
+    lastInvoic
