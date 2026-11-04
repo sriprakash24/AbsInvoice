@@ -95,8 +95,6 @@
   .seg button{border:0;background:transparent;padding:6px 12px;font-size:13px;font-weight:500;color:var(--muted)}
   .seg button+button{border-left:1px solid #CFD3DA}
   .seg button.on{background:var(--ink);color:#fff;font-weight:600}
-  .switch{display:inline-flex;align-items:center;gap:8px;font-size:13.5px;color:var(--text);cursor:pointer;user-select:none}
-  .switch input{accent-color:var(--brand);width:17px;height:17px}
   .hint{font-size:12.5px;color:var(--muted)}
   .src{font-size:11px;color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:0 5px;margin-left:4px}
   code{background:var(--canvas);border:1px solid var(--line);border-radius:5px;padding:0 5px;font-size:12px}
@@ -128,8 +126,6 @@
   .fields .full{grid-column:1/-1}
   @media (max-width:520px){.fields{grid-template-columns:1fr}}
   .banner{border-radius:8px;padding:9px 12px;font-size:13px;margin-bottom:12px}
-  .banner.test{background:#FFF7E0;border:1px solid #F3DC9A;color:#7A4A08}
-  .banner.live{background:#FDECEC;border:1px solid #F3B8B8;color:#9B1C1C}
   .banner.err{background:#FDECEC;border:1px solid #F3B8B8;color:#9B1C1C}
 
   /* ───────── tab-pinned category chips + manual picker ───────── */
@@ -320,7 +316,7 @@ main.wrap{padding-bottom:110px}
 @media print{.fab,#gate{display:none!important}}
 
 /* ═════════ MOBILE-FIRST FIXES ═════════ */
-html,body{overflow-x:hidden;-webkit-text-size-adjust:100%}
+html,body{overflow-x:clip;-webkit-text-size-adjust:100%}
 .ghead{position:sticky;top:var(--tabsH,52px);z-index:5}
 /* floating category switcher (manual invoice + price list) */
 .catfloat{position:fixed;left:12px;right:12px;bottom:calc(var(--cfb,16px) + env(safe-area-inset-bottom,0px));z-index:44;display:none;justify-content:center;pointer-events:none}
@@ -558,7 +554,6 @@ button,select,.tab,.cat,.ctile,.qk,.prow{touch-action:manipulation;-webkit-tap-h
   .quick{margin-top:8px}
   .totals .grand{font-size:22px}
   .actrow{flex-direction:column;align-items:stretch;gap:10px}
-  .actrow .switch{justify-content:center}
   .actrow>.row{flex-wrap:nowrap!important}
   .actrow>.row .btn{flex:1;min-height:48px}
   .fab{left:10px;right:10px}
@@ -680,7 +675,6 @@ button,select,.tab,.cat,.ctile,.qk,.prow{touch-action:manipulation;-webkit-tap-h
           <div class="row" style="margin-top:8px;justify-content:flex-end"><button class="btn ghost" id="cuCancel" type="button">Cancel</button><button class="btn primary" id="cuAdd" type="button">Add to bill</button></div>
         </div>
         <div id="editBanner"></div>
-        <div id="modeBanner"></div>
         <table id="billTable">
           <thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Rate</th><th class="num">Amount</th><th></th></tr></thead>
           <tbody id="billBody"></tbody>
@@ -702,10 +696,7 @@ button,select,.tab,.cat,.ctile,.qk,.prow{touch-action:manipulation;-webkit-tap-h
           <div class="full"><label class="small">Notes</label><input type="text" id="notes" maxlength="300"></div>
         </div>
 
-        <div class="row sp-between actrow" style="margin-top:18px">
-          <label class="switch" title="When ON nothing is written to Firestore and no invoice number is used">
-            <input type="checkbox" id="testMode" checked> Test mode (don’t save)
-          </label>
+        <div class="row actrow" style="justify-content:flex-end;margin-top:18px">
           <div class="row" style="flex-wrap:nowrap"><button class="btn" id="btnPreview" type="button" style="padding:11px 16px;font-size:15px">Preview</button><button class="btn primary" id="btnCreate" style="padding:11px 24px;font-size:15px">Create invoice</button></div>
         </div>
       </div>
@@ -1089,7 +1080,6 @@ function renderBill(flashId) {
   $("btnCreate").textContent = lbl; $("prevCreate").textContent = lbl;
   $("editBanner").innerHTML = editing
     ? `<div class="banner edit"><span>Editing <b>${esc(editing.invoiceNo)}</b> — saving updates the stored invoice.</span><button class="btn ghost" id="editCancel" type="button" style="padding:4px 10px">Cancel</button></div>` : "";
-  $("modeBanner").style.display = editing ? "none" : "";
   if (window.__onBill) window.__onBill();
 }
 $("billBody").addEventListener("click", (e) => {
@@ -1269,19 +1259,7 @@ $("gateForm").addEventListener("submit", async (e) => {
 });
 
 /* ───────────────────────── invoice creation ───────────────────────── */
-function modeBanner() {
-  const test = $("testMode").checked;
-  $("modeBanner").innerHTML = test
-    ? `<div class="banner test">TEST MODE — nothing is saved to Firestore and no invoice number is used.</div>`
-    : `<div class="banner live">LIVE — “Create invoice” writes a real invoice to <b>${esc(firebaseConfig.projectId)}</b> (invoices collection).</div>`;
-  store.set("abs_voice_test", test ? "1" : "0");
-}
-$("testMode").addEventListener("change", () => {
-  if (!$("testMode").checked && !confirm("Turn OFF test mode? New invoices will be saved to your real Firestore.")) { $("testMode").checked = true; }
-  modeBanner();
-});
-if (store.get("abs_voice_test") === "0") $("testMode").checked = false;
-modeBanner(); restoreDraft(); renderBill(); syncPay();
+restoreDraft(); renderBill(); syncPay();
 
 async function reserveInvoiceNo() { // identical scheme to the website: ABSI + YYYYMMDD + 3-digit daily counter
   const d = new Date();
@@ -1340,8 +1318,6 @@ async function createInvoice() {
       const { source, orderId, orderDocId, ...changes } = base;
       await updateDoc(doc(db, "invoices", editing.docId), { ...changes, updatedAt: serverTimestamp() });
       inv = { ...base, invoiceNo: editing.invoiceNo, date: editing.date || new Date(), saved: true, updated: true, docId: editing.docId };
-    } else if ($("testMode").checked) {
-      inv = { ...base, invoiceNo: "TEST-" + Date.now().toString().slice(-6), date: new Date(), saved: false, docId: null };
     } else {
       const invoiceNo = await reserveInvoiceNo();
       const ref = await addDoc(collection(db, "invoices"), {
@@ -1426,7 +1402,7 @@ function showInvoice(inv, mode) {
   viewInv = inv; viewMode = mode;
   const T = {
     preview: ["Bill preview", "Check it, then tap Create invoice. Nothing is saved until then."],
-    fresh: [inv.updated ? "Invoice updated ✓" : inv.saved ? "Invoice saved ✓" : "Test invoice (not saved)", inv.saved ? inv.invoiceNo : ""],
+    fresh: [inv.updated ? "Invoice updated ✓" : "Invoice saved ✓", inv.saved ? inv.invoiceNo : ""],
     view: ["Invoice " + inv.invoiceNo, ""],
   }[mode];
   $("doneTitle").textContent = T[0]; $("doneSub").textContent = T[1];
