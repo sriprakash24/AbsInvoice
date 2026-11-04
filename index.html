@@ -459,6 +459,114 @@ td.i-edit{text-align:right;white-space:nowrap}
   #doneEdit{grid-column:1/-1}
 }
 </style>
+<style>
+/* ═════════ v3 — parallel bills · category colours · mobile & laptop polish ═════════ */
+:root{--btH:0px;--sbH:0px;--catH:0px}
+button,select,.tab,.cat,.ctile,.qk,.prow{touch-action:manipulation;-webkit-tap-highlight-color:transparent}
+.wrap{max-width:1380px}
+#billCol{scroll-margin-top:calc(var(--tabsH,52px) + var(--btH,0px) + 8px)}
+
+/* ---- bill tabs (hold one customer, serve the next) ---- */
+.billtabs{position:sticky;top:var(--tabsH,52px);z-index:29;background:#fff;border-bottom:1px solid var(--line);box-shadow:var(--shadow)}
+.billtabs .wrap{display:flex;align-items:center;gap:8px;padding-top:7px;padding-bottom:7px}
+.bt-scroll{position:relative;display:flex;gap:7px;overflow-x:auto;flex:1;min-width:0;scrollbar-width:none;padding:2px 1px}
+.bt-scroll::-webkit-scrollbar{display:none}
+.bt{position:relative;flex:0 0 auto;border:1.5px solid var(--line);background:var(--panel2);color:var(--text);border-radius:12px;max-width:215px}
+.bt-main{display:flex;flex-direction:column;align-items:flex-start;gap:1px;border:0;background:none;color:inherit;text-align:left;padding:5px 12px;min-width:92px;max-width:100%;border-radius:11px}
+.bt.cx .bt-main{padding-right:32px}
+.bt-main b{font-size:13.5px;line-height:1.25;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bt-main small{font-size:11.5px;font-weight:600;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+.bt.has{border-color:var(--brand);background:var(--brand-soft)}
+.bt.on{background:var(--ink);border-color:var(--ink);color:#fff;box-shadow:0 3px 10px rgba(11,31,75,.3)}
+.bt.on small{color:#FFD08A}
+.bt-x{position:absolute;right:4px;top:50%;transform:translateY(-50%);width:26px;height:26px;border-radius:50%;border:0;background:transparent;color:inherit;opacity:.6;font-size:18px;line-height:1;padding:0;display:grid;place-items:center}
+.bt-x:hover,.bt-x:active{opacity:1;background:rgba(0,0,0,.16)}
+.bt-new{flex:0 0 auto;border:1.5px dashed var(--brand);background:var(--brand-soft);color:var(--brand-d);border-radius:12px;font-weight:700;padding:0 14px;min-height:44px;font-size:13.5px;white-space:nowrap}
+.bt-new:hover,.bt-new:active{background:var(--brand);color:#fff;border-style:solid}
+
+/* ---- category colours ---- */
+.cat{font-weight:700;border-color:color-mix(in srgb,var(--cc,#CFD3DA) 45%,#fff)}
+.cat::before{content:"";display:inline-block;width:9px;height:9px;border-radius:50%;background:var(--cc,var(--muted));margin-right:7px}
+.cat[data-c="ALL"]::before{display:none}
+.cat.cur:not(.on){background:color-mix(in srgb,var(--cc,#999) 14%,#fff);border-color:var(--cc,#999);color:var(--text)}
+.cat.on{background:var(--cc,var(--ink));border-color:var(--cc,var(--ink));color:#fff;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+.cat.on::before{background:#fff}
+.ghead{top:calc(var(--tabsH,52px) + var(--btH,0px) + var(--sbH,0px) + var(--catH,0px));background:var(--cc,var(--ink));color:#fff;border-left:0;border-radius:10px;padding:9px 12px;margin:14px 0 4px;font-size:13.5px;letter-spacing:.4px;text-transform:uppercase;align-items:center;box-shadow:0 3px 8px rgba(11,31,75,.18)}
+.ghead span{background:rgba(255,255,255,.22);color:#fff;border-radius:999px;padding:1px 10px;font-size:12px;letter-spacing:0}
+.pcat{background:var(--cc,var(--ink));color:#fff;border:0;border-radius:10px;padding:9px 12px;font-size:13.5px;letter-spacing:.4px;text-transform:uppercase;position:sticky;top:calc(var(--tabsH,52px) + var(--catH,0px));z-index:6;box-shadow:0 3px 8px rgba(11,31,75,.18)}
+.ctile{background:var(--panel);background:color-mix(in srgb,var(--tc,#F26A0F) 9%,#fff);border-left-width:6px;min-height:52px;align-items:center}
+.ctile.on{background:var(--tc,var(--ink));border-color:var(--tc,var(--ink));color:#fff}
+.ctile.on span{color:rgba(255,255,255,.85)}
+.cf-pill{border-bottom-color:var(--cfc,var(--brand))}
+.cf-main .cf-ic{color:var(--cfc,var(--brand))}
+.cf-main #cfName{color:var(--cfc,var(--ink))}
+.ctag{display:inline-block;background:var(--cc);color:#fff;border-radius:5px;font-size:10px;font-weight:700;padding:0 6px;letter-spacing:.3px;margin-right:6px;vertical-align:1px}
+
+/* ---- product rows + coloured plus / minus ---- */
+.prow{gap:8px;border-left:4px solid var(--cc,transparent);padding:9px 8px 9px 10px;border-radius:0 10px 10px 0}
+.prow.sel{border-left:4px solid var(--cc,var(--brand));background:#FFF3E3;box-shadow:inset 0 0 0 1.5px rgba(242,106,15,.55)}
+.pinfo .item-name{line-height:1.25}
+.pinfo .item-sub{margin-top:1px;line-height:1.35}
+.pprice{display:inline;font-size:14.5px;font-weight:700;color:var(--brand-d)}
+.prow .qty{flex:0 0 auto;gap:6px}
+.prow .qty button{width:40px;height:40px;border-radius:11px;font-size:22px;font-weight:700;line-height:1;border:0;padding:0}
+.prow .qty button[data-a="dec"]{background:#FDE2E2;color:#B91C1C;box-shadow:inset 0 0 0 1.5px #F2AFAF}
+.prow .qty button[data-a="dec"]:hover,.prow .qty button[data-a="dec"]:active{background:#B91C1C;color:#fff}
+.prow .qty button[data-a="inc"]{background:#16A34A;color:#fff;box-shadow:0 2px 6px rgba(22,163,74,.35)}
+.prow .qty button[data-a="inc"]:hover,.prow .qty button[data-a="inc"]:active{background:#15803D}
+.prow .qty input{width:54px;height:40px;font-weight:700;font-size:16px;text-align:center;border-radius:10px}
+.prow.sel .qty input{border-color:var(--brand);color:var(--brand-d);background:#fff}
+#billTable .qty button[data-act="dec"]{background:#FDE2E2;color:#B91C1C;border-color:#F2AFAF}
+#billTable .qty button[data-act="inc"]{background:#16A34A;color:#fff;border-color:#16A34A}
+
+/* ---- invoices: always-visible Edit ---- */
+.btn.editb{background:var(--ink);border-color:var(--ink);color:#fff;padding:6px 12px}
+.btn.editb:hover{background:var(--ink2);border-color:var(--ink2)}
+
+/* ---- laptop / desktop ---- */
+@media (min-width:901px){
+  .fab{display:none!important}
+  .catfloat{display:none!important}
+  #billCol{top:calc(var(--tabsH,52px) + var(--btH,0px) + 12px);max-height:calc(100vh - var(--tabsH,52px) - var(--btH,0px) - 24px)}
+  .grid{gap:20px}
+}
+/* ---- tablet + phone: sticky stack = tabs → bills → search ---- */
+@media (max-width:900px){
+  .sbar{top:calc(var(--tabsH,52px) + var(--btH,0px))}
+  .kbdh{display:none}
+}
+/* ---- phone ---- */
+@media (max-width:640px){
+  .topbar .wrap{flex-wrap:nowrap;gap:8px;padding-top:6px;padding-bottom:6px}
+  .topbar .pill{min-width:0;flex:0 1 auto;padding:3px 10px;font-size:12px}
+  #dbStatus{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:44vw}
+  .brand-logo{height:38px}
+  .hb{padding:8px 11px}
+  .tabs{margin:0}
+  .tab{flex:1 1 0;justify-content:center;padding:11px 4px 9px;font-size:14px}
+  main.wrap{padding-top:10px}
+  .card{padding:12px}
+  .billtabs .wrap{padding:6px 10px;gap:6px}
+  .bt-main{min-width:84px;padding:4px 10px}
+  .bt.cx .bt-main{padding-right:28px}
+  .bt-main b{max-width:112px;font-size:13px}
+  .bt-new{padding:0 11px;min-height:42px}
+  .prow{padding:10px 6px 10px 9px}
+  .prow .qty{gap:5px}
+  .prow .qty button{width:46px;height:46px;font-size:24px;border-radius:12px}
+  .prow .qty input{width:56px;height:46px;font-size:17px}
+  .quick{margin-top:8px}
+  .totals .grand{font-size:22px}
+  .actrow{flex-direction:column;align-items:stretch;gap:10px}
+  .actrow .switch{justify-content:center}
+  .actrow>.row{flex-wrap:nowrap!important}
+  .actrow>.row .btn{flex:1;min-height:48px}
+  .fab{left:10px;right:10px}
+  #invTable tr.inv-row{grid-template-areas:"no tot" "cu cu" "dt pay" "ed ed"}
+  #invTable td.i-edit{display:flex;grid-area:ed;gap:8px;margin-top:8px}
+  #invTable td.i-edit .btn{flex:1;min-height:42px}
+}
+</style>
 <style id="pageStyle"></style>
 
 </head>
@@ -505,6 +613,7 @@ td.i-edit{text-align:right;white-space:nowrap}
     </div>
   </div>
 
+  <div class="billtabs" id="billTabs"><div class="wrap"><div class="bt-scroll" id="btScroll"></div><button class="bt-new" id="btNew" type="button" title="Start another bill (Alt+N)">＋ New bill</button></div></div>
   <main class="wrap">
   <div id="loadError" class="banner err" style="display:none"></div>
 
@@ -527,7 +636,7 @@ td.i-edit{text-align:right;white-space:nowrap}
         <h2 style="margin:0">Invoices <span class="hint" id="invCount"></span></h2>
         <div class="row">
           <input type="text" id="invSearch" placeholder="Search no., name, mobile…" style="max-width:280px" autocomplete="off">
-          <button class="btn" id="invReload">Reload</button>
+          <div class="seg" id="invRange"><button type="button" data-r="today" class="on">Today</button><button type="button" data-r="all">All</button></div><button class="btn" id="invReload">Reload</button>
         </div>
       </div>
       <div class="hint" style="margin-top:6px">Live from the same Firestore <code>invoices</code> collection your main app uses — invoices from either app appear here automatically.</div>
@@ -543,18 +652,18 @@ td.i-edit{text-align:right;white-space:nowrap}
     <div id="viewManual" style="display:none">
       <div class="card">
         <h2>Add items manually</h2>
-        <div class="row sbar" style="flex-wrap:nowrap"><div class="sbox" id="mBox"><input type="search" id="mSearch" placeholder="Search product… (typos &amp; Tamil OK)" autocomplete="off" enterkeyhint="done"><button class="sclr" type="button" id="mClr" aria-label="Clear search">×</button></div><button class="btn catbtn" type="button" data-sheet="m">☰ Categories</button></div>
+        <div class="row sbar" id="mBar" style="flex-wrap:nowrap"><div class="sbox" id="mBox"><input type="search" id="mSearch" placeholder="Search product… (typos &amp; Tamil OK)" autocomplete="off" enterkeyhint="done"><button class="sclr" type="button" id="mClr" aria-label="Clear search">×</button></div><button class="btn catbtn" type="button" data-sheet="m">☰ Categories</button></div>
         <div class="quick" id="mQuick"></div>
         <div class="cats" id="mCats"></div>
         <div id="mList"></div>
-        <div class="hint" style="margin-top:10px">Tap a product to add 1 · use − / + or type a quantity · press Enter in search to add the top match. Rates can be edited in the bill.</div>
+        <div class="hint" style="margin-top:10px">Tap a product to add 1 · use − / + or type a quantity · press Enter in search to add the top match. Rates can be edited in the bill.<span class="kbdh"><br>Keyboard: Alt+N new bill · Alt+1…9 switch bill · “/” jump to search.</span></div>
       </div>
     </div>
     <!-- RIGHT: bill -->
     <div id="billCol">
       <div class="card">
         <div class="row sp-between" style="margin-bottom:10px">
-          <h2 style="margin:0">Current bill</h2>
+          <h2 style="margin:0" id="billTitle">Current bill</h2>
           <div class="row">
             <button class="btn ghost" id="btnCustom" type="button">+ Custom item</button>
             <button class="btn ghost" id="btnUndo">Undo</button>
@@ -593,7 +702,7 @@ td.i-edit{text-align:right;white-space:nowrap}
           <div class="full"><label class="small">Notes</label><input type="text" id="notes" maxlength="300"></div>
         </div>
 
-        <div class="row sp-between" style="margin-top:18px">
+        <div class="row sp-between actrow" style="margin-top:18px">
           <label class="switch" title="When ON nothing is written to Firestore and no invoice number is used">
             <input type="checkbox" id="testMode" checked> Test mode (don’t save)
           </label>
@@ -874,6 +983,71 @@ let lastTouched = null;
 let editing = null; // set while an already-saved invoice is being edited
 const snapshot = () => { undoStack.push(JSON.stringify({ b: bill, a: adj })); if (undoStack.length > 40) undoStack.shift(); };
 
+/* ───────────────────────── parallel bills (hold one customer, serve the next) ───────────────────────── */
+const FIELD_IDS = ["custName", "custMobile", "payMode", "txnRef", "notes"], MAX_SLOTS = 9;
+let slots = [], activeSlot = 0, slotSeq = 0;
+const buzz = () => { try { navigator.vibrate && navigator.vibrate(12); } catch {} };
+function newSlot() { return { n: ++slotSeq, bill: [], adj: 0, pct: $("pkgPct").value || "3", f: {}, ed: null, undo: [] }; }
+function captureSlot() {
+  const f = {}; FIELD_IDS.forEach((id) => (f[id] = $(id).value));
+  const s = slots[activeSlot] || { n: ++slotSeq };
+  return { ...s, bill, adj, pct: $("pkgPct").value, f, ed: editing, undo: undoStack };
+}
+function applySlot(s) {
+  bill = s.bill; adj = s.adj || 0; editing = s.ed || null; undoStack = s.undo || []; lastTouched = null;
+  $("pkgPct").value = s.pct != null ? s.pct : 3;
+  FIELD_IDS.forEach((id) => ($(id).value = s.f && s.f[id] != null ? s.f[id] : id === "payMode" ? "CASH" : ""));
+  syncPay(); closeCustom(); renderBill();
+}
+function slotTotal(s) {
+  const sub = s.bill.reduce((t, b) => t + Math.round((Number(b.qty) || 0) * (Number(b.rate) || 0)), 0);
+  return s.bill.length ? Math.max(sub + Math.round((sub * (Number(s.pct) || 0)) / 100) + (Number(s.adj) || 0), 0) : 0;
+}
+const slotLabel = (s) => (s.f && s.f.custName && s.f.custName.trim()) || "Bill " + s.n;
+function renderBillTabs(center) {
+  const sc = $("btScroll"); if (!sc || !slots.length) return;
+  const keep = sc.scrollLeft, live = captureSlot(), list = slots.map((s, i) => (i === activeSlot ? live : s));
+  sc.innerHTML = list.map((s, i) => {
+    const n = s.bill.length, tot = inr(slotTotal(s));
+    const sub = s.ed ? "✎ Edit · " + tot : n ? n + (n > 1 ? " items · " : " item · ") + tot : "empty";
+    return `<div class="bt${i === activeSlot ? " on" : ""}${n ? " has" : ""}${list.length > 1 ? " cx" : ""}" data-i="${i}"><button type="button" class="bt-main" data-i="${i}"><b>${esc(slotLabel(s))}</b><small>${esc(sub)}</small></button>${list.length > 1 ? `<button type="button" class="bt-x" data-x="${i}" aria-label="Close this bill">×</button>` : ""}</div>`;
+  }).join("");
+  sc.scrollLeft = keep;
+  if (center) { const on = sc.querySelector(".bt.on"); if (on) sc.scrollLeft = on.offsetLeft - (sc.clientWidth - on.offsetWidth) / 2; }
+  const t = $("billTitle"); if (t) t.textContent = "Bill " + live.n + (live.ed ? " · editing " + live.ed.invoiceNo : "");
+  const fs = document.querySelector("#fab small"); if (fs) fs.textContent = "Bill " + live.n + " total";
+}
+function switchSlot(i) {
+  if (i === activeSlot || !slots[i]) return;
+  slots[activeSlot] = captureSlot();
+  activeSlot = i; applySlot(slots[i]); renderBillTabs(true);
+  buzz(); toast("Now on " + slotLabel(slots[i]));
+}
+function addSlot() {
+  if (activeTab !== "manual") setTab("manual");
+  slots[activeSlot] = captureSlot();
+  const blank = (s) => !s.bill.length && !s.ed && !(s.f && (s.f.custName || s.f.custMobile));
+  if (blank(slots[activeSlot])) { toast("This bill is still empty — start adding items"); if (!isNarrow()) $("mSearch").focus(); return; }
+  const other = slots.findIndex((s, i) => i !== activeSlot && blank(s));
+  if (other >= 0) { switchSlot(other); return; }
+  if (slots.length >= MAX_SLOTS) { toast("Maximum " + MAX_SLOTS + " open bills — finish or close one first"); return; }
+  slots.push(newSlot()); activeSlot = slots.length - 1;
+  applySlot(slots[activeSlot]); renderBillTabs(true);
+  window.scrollTo(0, 0); buzz(); toast("New bill started — the previous bill is on hold");
+  if (!isNarrow()) $("mSearch").focus();
+}
+function closeSlot(i) {
+  if (slots.length < 2 || !slots[i]) return;
+  const s = i === activeSlot ? captureSlot() : slots[i], n = s.bill.length;
+  if (n && !confirm("Discard " + slotLabel(s) + " (" + n + " item" + (n > 1 ? "s" : "") + ")? It has not been saved.")) return;
+  if (i !== activeSlot) slots[activeSlot] = captureSlot();
+  slots.splice(i, 1);
+  if (i < activeSlot) activeSlot--;
+  else if (i === activeSlot) { activeSlot = Math.min(i, slots.length - 1); applySlot(slots[activeSlot]); }
+  renderBillTabs(true); saveDraft();
+}
+
+
 const FREQ_KEY = "abs_freq_v1";
 let freq = (() => { try { return JSON.parse(store.get(FREQ_KEY) || "{}") || {}; } catch { return {}; } })();
 
@@ -1141,9 +1315,15 @@ function buildBase() {
 function resetBill() {
   if (editing && editing.prevPct != null) $("pkgPct").value = editing.prevPct;
   bill = []; adj = 0; undoStack = []; lastTouched = null; editing = null;
-  ["custName", "custMobile", "txnRef", "notes"].forEach((id) => ($(id).value = ""));
-  $("payMode").value = "CASH"; syncPay(); closeCustom();
-  renderBill(); saveDraft();
+  FIELD_IDS.forEach((id) => ($(id).value = id === "payMode" ? "CASH" : ""));
+  syncPay(); closeCustom();
+  if (slots.length > 1) {              // this customer is done → drop their bill, jump to the next one waiting
+    slots.splice(activeSlot, 1);
+    const j = Math.min(activeSlot, slots.length - 1), waiting = slots.findIndex((s) => s.bill.length);
+    activeSlot = slots[j].bill.length ? j : waiting >= 0 ? waiting : j;
+    applySlot(slots[activeSlot]); renderBillTabs(true);
+  } else renderBill();
+  saveDraft();
 }
 
 let creating = false;
@@ -1272,9 +1452,15 @@ document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDon
 /* edit an invoice that is already saved: load it into the bill, then "Update invoice" */
 function startEdit(inv) {
   if (!inv) return;
-  if (bill.length && !confirm("Replace the bill you are working on with " + inv.invoiceNo + "?")) return;
   closeDone();
-  const prevPct = editing ? editing.prevPct : $("pkgPct").value;
+  slots[activeSlot] = captureSlot();
+  const ex = slots.findIndex((s) => s.ed && s.ed.docId === inv.id);
+  if (ex >= 0) { setTab("manual"); switchSlot(ex); return; }
+  if (bill.length || editing) {        // current bill is busy → edit in a NEW bill
+    if (slots.length >= MAX_SLOTS) { toast("Too many open bills — finish or close one first"); return; }
+    slots.push(newSlot()); activeSlot = slots.length - 1; applySlot(slots[activeSlot]);
+  }
+  const prevPct = $("pkgPct").value;
   bill = inv.items.map((it, i) => {
     const p = CURRENT_LIST.find((x) => x.id === it.productId);
     const custom = !it.productId;
@@ -1289,9 +1475,9 @@ function startEdit(inv) {
   $("custName").value = inv.customer.name === "Walk-in Customer" ? "" : inv.customer.name;
   $("custMobile").value = inv.customer.mobile || ""; $("txnRef").value = inv.transactionRef || ""; $("notes").value = inv.notes || "";
   $("payMode").value = [...$("payMode").options].some((o) => o.value === inv.paymentMode) ? inv.paymentMode : "CASH"; syncPay();
-  setTab("manual"); renderBill(); saveDraft();
+  setTab("manual"); renderBill(); renderBillTabs(true); saveDraft();
   setTimeout(() => $("billCol").scrollIntoView({ behavior: "smooth", block: "start" }), 60);
-  toast("Editing " + inv.invoiceNo + " — change it, then tap Update invoice");
+  toast("Editing " + inv.invoiceNo + " in its own bill — change it, then tap Update invoice");
 }
 $("doneEdit").onclick = () => startEdit(viewInv);
 
@@ -1343,7 +1529,41 @@ let activeTab = "manual", mCat = "ALL", pCat = "ALL";
 const TAB_VIEWS = { manual: ["viewManual", "billCol"], price: ["viewPrice"], invoices: ["viewInvoices"] };
 const price = (n) => "₹" + (+n || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 });
 const catOf = (p) => p.category || "OTHER";
-const syncTabsH = () => document.documentElement.style.setProperty("--tabsH", $("tabsBar").offsetHeight + "px");
+const CAT_PAL = ["#C2410C", "#1D4FB8", "#15803D", "#7E22CE", "#B91C1C", "#0F766E", "#A16207", "#BE185D", "#4338CA", "#0369A1", "#4D7C0F", "#7C2D12", "#0E7490", "#6D28D9", "#BE123C", "#374151"];
+function catColor(c) {
+  const k = fixKey(c);
+  if (FIXED_RANK.has(k)) return CAT_PAL[FIXED_RANK.get(k) % CAT_PAL.length];
+  let h = 0; for (const ch of k) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return CAT_PAL[h % CAT_PAL.length];
+}
+let spyCat = "";
+/** which category header is at the top of the screen right now (drives the floating pill + chip highlight) */
+function spy(force) {
+  if (activeTab !== "manual" && activeTab !== "price") return;
+  const sel = activeTab === "manual" ? mCat : pCat;
+  let found = "";
+  if (sel === "ALL" && !(activeTab === "manual" && $("mSearch").value.trim())) {
+    const heads = document.querySelectorAll(activeTab === "manual" ? "#mList .ghead" : "#pBody .pcat");
+    const cs = getComputedStyle(document.documentElement);
+    const off = ["--tabsH", "--btH", "--sbH", "--catH"].reduce((t, k) => t + (parseFloat(cs.getPropertyValue(k)) || 0), 0);
+    for (const h of heads) { if (h.getBoundingClientRect().top <= off + 6) found = h.dataset.c; else break; }
+    if (!found && heads[0]) found = heads[0].dataset.c;
+  }
+  if (found !== spyCat || force) {
+    const changed = found !== spyCat; spyCat = found; updateCatFloat();
+    if (changed && !isNarrow()) {
+      const chips = activeTab === "manual" ? $("mCats") : $("pCats"), c = chips.querySelector(".cat.cur");
+      if (c) chips.scrollLeft = c.offsetLeft - (chips.clientWidth - c.offsetWidth) / 2;
+    }
+  }
+}
+const syncTabsH = () => {
+  const r = document.documentElement.style, nar = matchMedia("(max-width:900px)").matches, man = activeTab === "manual";
+  r.setProperty("--tabsH", $("tabsBar").offsetHeight + "px");
+  r.setProperty("--btH", man ? $("billTabs").offsetHeight + "px" : "0px");
+  r.setProperty("--sbH", man && nar ? $("mBar").offsetHeight + "px" : "0px");
+  r.setProperty("--catH", !nar && (man || activeTab === "price") ? ((man ? $("mCats") : $("pCats")).offsetHeight || 0) + "px" : "0px");
+};
 window.addEventListener("resize", syncTabsH);
 
 function setTab(t) {
@@ -1353,7 +1573,8 @@ function setTab(t) {
   $("mainGrid").style.display = t === "price" || t === "invoices" ? "none" : "";
   document.querySelectorAll(".tab").forEach((b) => b.classList.toggle("on", b.dataset.tab === t));
   if (t === "invoices") startInvoices(); else stopInvoices();
-  renderManual(); renderPrice(); updateFloat(); syncTabsH();
+  $("billTabs").style.display = t === "manual" ? "" : "none";
+  renderManual(); renderPrice(); updateFloat(); syncTabsH(); spy(true);
   centerChip($("mCats")); centerChip($("pCats"));
   window.scrollTo(0, 0);
 }
@@ -1364,7 +1585,7 @@ function catChips(el, sel) {
   const counts = new Map();
   CURRENT_LIST.forEach((p) => counts.set(catOf(p), (counts.get(catOf(p)) || 0) + 1));
   const all = [["ALL", "All", CURRENT_LIST.length], ...[...counts].map(([c, n]) => [c, c, n])];
-  el.innerHTML = all.map(([v, l, n]) => `<button class="cat${v === sel ? " on" : ""}" data-c="${esc(v)}">${esc(l)} <span>${n}</span></button>`).join("");
+  el.innerHTML = all.map(([v, l, n]) => `<button class="cat${v === sel ? " on" : ""}" data-c="${esc(v)}"${v === "ALL" ? "" : ` style="--cc:${catColor(v)}"`}>${esc(l)} <span>${n}</span></button>`).join("");
   el.scrollLeft = keep;
 }
 function centerChip(el) { const on = el.querySelector(".cat.on"); if (on) el.scrollLeft = on.offsetLeft - (el.clientWidth - on.offsetWidth) / 2; }
@@ -1387,26 +1608,27 @@ function renderQuick() {
 }
 function renderManual() {
   if (activeTab !== "manual") return;
-  const y = window.scrollY, text = $("mSearch").value;
+  const y = window.scrollY, text = $("mSearch").value, searching = !!text.trim();
   $("mBox").classList.toggle("has", !!text);
   if (mCat !== "ALL" && !CURRENT_LIST.some((p) => catOf(p) === mCat)) mCat = "ALL";
   catChips($("mCats"), mCat); renderQuick();
   const list = filterProducts(mCat, text);
   const inBill = new Map(bill.map((b) => [b.productId, b.qty]));
-  const row = (p) => { const n = inBill.get(p.id) || 0;
-    return `<div class="prow${n ? " sel" : ""}" data-id="${esc(p.id)}">
-      <div class="pinfo"><div class="item-name">${esc(p.name)}</div><div class="item-sub">${esc(p.unit)}${stockTag(p)}</div></div>
-      <div class="pprice">${price(p.sale || p.mrp)}</div>
-      <span class="qty"><button data-a="dec">−</button><input type="number" min="0" inputmode="numeric" value="${n || ""}" placeholder="0" data-a="set"><button data-a="inc">+</button></span>
+  const row = (p, showCat) => { const n = inBill.get(p.id) || 0;
+    return `<div class="prow${n ? " sel" : ""}" data-id="${esc(p.id)}" style="--cc:${catColor(catOf(p))}">
+      <div class="pinfo"><div class="item-name">${esc(p.name)}</div><div class="item-sub">${showCat ? `<span class="ctag">${esc(catOf(p))}</span>` : ""}<span class="pprice">${price(p.sale || p.mrp)}</span>${p.unit ? " · " + esc(p.unit) : ""}${stockTag(p)}</div></div>
+      <span class="qty"><button type="button" data-a="dec" aria-label="Less">−</button><input type="number" min="0" inputmode="numeric" value="${n || ""}" placeholder="0" data-a="set" aria-label="Quantity"><button type="button" data-a="inc" aria-label="Add">+</button></span>
     </div>`; };
   let html = "";
   if (!list.length) html = '<div class="empty">No products found.</div>';
-  else if (mCat === "ALL" && !text.trim()) {
+  else if (searching) html = `<div class="hint" style="margin:8px 2px">${list.length} match${list.length > 1 ? "es" : ""} in all categories</div>` + list.map((p) => row(p, true)).join("");
+  else {
     const groups = new Map(); list.forEach((p) => { const c = catOf(p); (groups.get(c) || groups.set(c, []).get(c)).push(p); });
-    html = [...groups].map(([c, ps]) => `<div class="ghead">${esc(c)}<span>${ps.length}</span></div>${ps.map(row).join("")}`).join("");
-  } else html = (text.trim() ? `<div class="hint" style="margin:8px 2px">${list.length} match${list.length > 1 ? "es" : ""} in all categories</div>` : "") + list.map(row).join("");
+    html = [...groups].map(([c, ps]) => `<div class="ghead" data-c="${esc(c)}" style="--cc:${catColor(c)}">${esc(c)}<span>${ps.length}</span></div>${ps.map((p) => row(p)).join("")}`).join("");
+  }
   $("mList").innerHTML = html;
   window.scrollTo(0, y);
+  spy(true);
 }
 function setManualQty(p, n) {
   const line = bill.find((b) => b.productId === p.id);
@@ -1429,7 +1651,7 @@ $("mQuick").addEventListener("click", (e) => { const b = e.target.closest(".qk")
 $("mList").addEventListener("click", (e) => {
   const row = e.target.closest(".prow"); if (!row || e.target.tagName === "INPUT") return;
   const p = CURRENT_LIST.find((x) => x.id === row.dataset.id); if (!p) return;
-  setManualQty(p, billQty(p) + (e.target.dataset.a === "dec" ? -1 : 1));
+  setManualQty(p, billQty(p) + (e.target.dataset.a === "dec" ? -1 : 1)); buzz();
 });
 $("mList").addEventListener("change", (e) => {
   if (e.target.dataset.a !== "set") return;
@@ -1455,15 +1677,21 @@ function catOrderList() { const m = new Map(); CURRENT_LIST.forEach((p) => m.set
 function updateCatFloat() {
   const el = $("catFloat"), on = (activeTab === "manual" || activeTab === "price") && CURRENT_LIST.length > 0;
   el.classList.toggle("show", on); if (!on) return;
-  const sel = activeTab === "manual" ? mCat : pCat, cats = catOrderList().map((x) => x[0]), i = cats.indexOf(sel);
-  $("cfName").textContent = sel === "ALL" ? "All categories" : sel;
-  $("cfPos").textContent = sel === "ALL" ? cats.length + " cats" : (i + 1) + "/" + cats.length;
+  const sel = activeTab === "manual" ? mCat : pCat, cats = catOrderList().map((x) => x[0]);
+  const shown = sel !== "ALL" ? sel : spyCat, i = cats.indexOf(shown), ok = !!shown && i >= 0;
+  $("cfName").textContent = ok ? shown : "All categories";
+  $("cfPos").textContent = ok ? (i + 1) + "/" + cats.length : cats.length + " cats";
+  el.style.setProperty("--cfc", ok ? catColor(shown) : "#F26A0F");
+  const chips = activeTab === "manual" ? $("mCats") : $("pCats");
+  chips.querySelectorAll(".cat").forEach((b) => b.classList.toggle("cur", sel === "ALL" && !!spyCat && b.dataset.c === spyCat));
   const f = $("fab"), fabOn = f.classList.contains("show") && !f.classList.contains("hide");
   document.documentElement.style.setProperty("--cfb", fabOn ? "88px" : "16px");
 }
 function stepCat(d) {
-  const cats = ["ALL", ...catOrderList().map((x) => x[0])], cur = activeTab === "manual" ? mCat : pCat;
+  const cats = ["ALL", ...catOrderList().map((x) => x[0])], sel = activeTab === "manual" ? mCat : pCat;
+  const cur = sel === "ALL" && spyCat ? spyCat : sel;
   const c = cats[(Math.max(0, cats.indexOf(cur)) + d + cats.length) % cats.length];
+  spyCat = "";
   if (activeTab === "manual") { mCat = c; renderManual(); centerChip($("mCats")); } else { pCat = c; renderPrice(); centerChip($("pCats")); }
   window.scrollTo(0, 0); updateCatFloat();
 }
@@ -1478,7 +1706,7 @@ function openCats(w) {
   sheetFor = w; const sel = w === "m" ? mCat : pCat, counts = new Map();
   CURRENT_LIST.forEach((p) => counts.set(catOf(p), (counts.get(catOf(p)) || 0) + 1));
   const all = [["ALL", "All products", CURRENT_LIST.length], ...[...counts].map(([c, n]) => [c, c, n])];
-  $("catGrid").innerHTML = all.map(([v, l, n], i) => `<button type="button" class="ctile${v === sel ? " on" : ""}" style="--tc:${TILE_COL[i % TILE_COL.length]}" data-c="${esc(v)}">${esc(l)}<span>${n}</span></button>`).join("");
+  $("catGrid").innerHTML = all.map(([v, l, n], i) => `<button type="button" class="ctile${v === sel ? " on" : ""}" style="--tc:${v === "ALL" ? "#0B1F4B" : catColor(v)}" data-c="${esc(v)}">${esc(l)}<span>${n}</span></button>`).join("");
   $("catSheet").classList.add("open");
 }
 document.addEventListener("click", (e) => { const b = e.target.closest("[data-sheet]"); if (b) openCats(b.dataset.sheet); });
@@ -1504,7 +1732,7 @@ function renderPrice() {
   const groups = new Map();
   list.forEach((p) => { const c = catOf(p); (groups.get(c) || groups.set(c, []).get(c)).push(p); });
   $("pBody").innerHTML = list.length ? [...groups].map(([c, ps]) => `
-    <h3 class="pcat">${esc(c)}</h3>
+    <h3 class="pcat" data-c="${esc(c)}" style="--cc:${catColor(c)}">${esc(c)}</h3>
     <table><thead><tr><th>Item</th><th>Unit</th><th class="num">Price</th></tr></thead><tbody>
     ${ps.map((p) => `<tr><td><div class="pn">${esc(p.name)}</div>${p.nameTa ? `<div class="item-sub">${esc(p.nameTa)}</div>` : ""}${stockTag(p) ? `<div class="item-sub">${stockTag(p).replace("· ", "")}</div>` : ""}</td>
       <td>${esc(p.unit)}</td><td class="num pp">${price(p.sale || p.mrp)}</td></tr>`).join("")}
@@ -1514,7 +1742,7 @@ $("pCats").addEventListener("click", (e) => { const b = e.target.closest(".cat")
 $("pSearch").addEventListener("input", debounce(renderPrice, 90));
 
 /* invoices — live from Firestore (same collection as the main app) */
-let invUnsub = null, invList = [];
+let invUnsub = null, invList = [], invRange = store.get("abs_invrange") || "today";
 const toDate = (v) => { if (!v) return null; if (v.toDate) return v.toDate(); if (v.seconds) return new Date(v.seconds * 1000); const d = new Date(v); return isNaN(d) ? null : d; };
 function normInvoice(id, r) {
   const items = (Array.isArray(r.items) ? r.items : []).map((it) => {
@@ -1553,14 +1781,17 @@ function startInvoices(force) {
 function stopInvoices() { if (invUnsub) { invUnsub(); invUnsub = null; } }
 const fmtDate = (d) => (d && d.getTime() > 0 ? d.toLocaleDateString("en-IN") + " " + d.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }) : "—");
 function renderInvoices() {
-  const q = $("invSearch").value.toLowerCase().split(/\s+/).filter(Boolean);
-  const rows = invList.filter((i) => { const h = `${i.invoiceNo} ${i.customer.name} ${i.customer.mobile} ${i.items.map((x) => x.description).join(" ")}`.toLowerCase(); return q.every((w) => h.includes(w)); });
-  $("invCount").textContent = invList.length ? `${rows.length} of ${invList.length}` : "";
+  const q = $("invSearch").value.toLowerCase().split(/\s+/).filter(Boolean), todayStr = new Date().toDateString();
+  const pool = invRange === "all" ? invList : invList.filter((i) => i.date && i.date.toDateString() === todayStr);
+  const rows = pool.filter((i) => { const h = `${i.invoiceNo} ${i.customer.name} ${i.customer.mobile} ${i.items.map((x) => x.description).join(" ")}`.toLowerCase(); return q.every((w) => h.includes(w)); });
+  const total = rows.reduce((t, i) => t + (Number(i.grandTotal) || 0), 0);
+  [...$("invRange").children].forEach((b) => b.classList.toggle("on", b.dataset.r === invRange));
+  $("invCount").textContent = invList.length ? `· ${rows.length} bill${rows.length === 1 ? "" : "s"} · ${inr(total)}` : "";
   $("invBody").innerHTML = rows.length ? rows.map((i) => `<tr class="inv-row" data-id="${esc(i.id)}">
     <td class="i-no"><b>${esc(i.invoiceNo)}</b></td><td class="i-date">${esc(fmtDate(i.date))}</td>
     <td class="i-cust">${esc(i.customer.name)}<div class="item-sub">${esc(i.customer.mobile)}</div></td>
-    <td class="num i-items">${i.items.length}</td><td class="num i-total"><b>${inr(i.grandTotal)}</b></td><td class="i-pay">${esc(i.paymentMode)}</td><td class="i-src"><span class="src">${esc(i.source || "—")}</span></td><td class="i-edit"><button class="btn ghost" data-edit="1" type="button" style="padding:4px 10px">Edit</button></td></tr>`).join("")
-    : '<tr><td colspan="8" class="empty">No invoices to show.</td></tr>';
+    <td class="num i-items">${i.items.length}</td><td class="num i-total"><b>${inr(i.grandTotal)}</b></td><td class="i-pay">${esc(i.paymentMode)}</td><td class="i-src"><span class="src">${esc(i.source || "—")}</span></td><td class="i-edit"><button class="btn editb" data-edit="1" type="button">✎ Edit</button></td></tr>`).join("")
+    : `<tr><td colspan="8" class="empty">${invRange === "today" && !q.length ? "No invoices today yet — tap “All” to see older ones." : "No invoices to show."}</td></tr>`;
 }
 $("invBody").addEventListener("click", (e) => {
   const tr = e.target.closest(".inv-row"); const inv = tr && invList.find((x) => x.id === tr.dataset.id); if (!inv) return;
@@ -1568,30 +1799,59 @@ $("invBody").addEventListener("click", (e) => {
 });
 $("invSearch").addEventListener("input", debounce(renderInvoices, 90));
 $("invReload").onclick = () => startInvoices(true);
+$("invRange").addEventListener("click", (e) => { const b = e.target.closest("[data-r]"); if (!b) return; invRange = b.dataset.r; store.set("abs_invrange", invRange); renderInvoices(); });
 
-/* current bill is kept in localStorage so a refresh never loses it */
+/* all open bills are kept in localStorage so a refresh (or a phone call!) never loses them */
 function saveDraft() {
   try {
-    const f = {}; for (const id of ["custName", "custMobile", "payMode", "txnRef", "notes"]) f[id] = $(id).value;
-    store.set("abs_draft_v1", JSON.stringify({ bill, adj, pct: $("pkgPct").value, f, ed: editing ? { ...editing, date: editing.date ? +editing.date : null } : null }));
+    slots[activeSlot] = captureSlot();
+    store.set("abs_drafts_v2", JSON.stringify({ a: activeSlot, seq: slotSeq, slots: slots.map((s) => ({ n: s.n, bill: s.bill, adj: s.adj, pct: s.pct, f: s.f, ed: s.ed ? { ...s.ed, date: s.ed.date ? +s.ed.date : null } : null })) }));
   } catch {}
 }
 function restoreDraft() {
+  slots = []; activeSlot = 0;
+  const line = (b) => ({ ...b, qty: Math.max(1, +b.qty || 1), rate: Math.max(0, +b.rate || 0) });
+  const edOf = (e) => (e ? { ...e, date: e.date ? new Date(e.date) : null } : null);
   try {
-    const d = JSON.parse(store.get("abs_draft_v1") || "null"); if (!d) return;
-    if (Array.isArray(d.bill)) bill = d.bill.map((b) => ({ ...b, qty: Math.max(1, +b.qty || 1), rate: Math.max(0, +b.rate || 0) }));
-    adj = bill.length ? Number(d.adj) || 0 : 0;
-    if (d.pct != null) $("pkgPct").value = d.pct;
-    for (const [id, v] of Object.entries(d.f || {})) if ($(id) && v != null) $(id).value = v;
-    if (d.ed && bill.length) editing = { ...d.ed, date: d.ed.date ? new Date(d.ed.date) : null };
+    const d = JSON.parse(store.get("abs_drafts_v2") || "null");
+    if (d && Array.isArray(d.slots) && d.slots.length) {
+      slotSeq = Math.max(+d.seq || 0, ...d.slots.map((s) => +s.n || 0));
+      slots = d.slots.map((s, i) => { const b = (s.bill || []).map(line); return { n: s.n || i + 1, bill: b, adj: b.length ? Number(s.adj) || 0 : 0, pct: s.pct != null ? s.pct : 3, f: s.f || {}, ed: b.length ? edOf(s.ed) : null, undo: [] }; });
+      activeSlot = Math.min(Math.max(+d.a || 0, 0), slots.length - 1);
+    } else {
+      const o = JSON.parse(store.get("abs_draft_v1") || "null");   // old single-bill draft
+      if (o) { const b = (o.bill || []).map(line); slotSeq = 1; slots = [{ n: 1, bill: b, adj: b.length ? Number(o.adj) || 0 : 0, pct: o.pct != null ? o.pct : 3, f: o.f || {}, ed: o.ed && b.length ? edOf(o.ed) : null, undo: [] }]; }
+    }
   } catch {}
+  if (!slots.length) slots = [newSlot()];
+  applySlot(slots[activeSlot]);
 }
 ["custName", "custMobile", "txnRef", "notes", "pkgPct"].forEach((id) => $(id).addEventListener("input", saveDraft));
 $("payMode").addEventListener("change", saveDraft);
 
-window.__onBill = () => { saveDraft(); renderManual(); updateFloat(); };
+window.__onBill = () => { saveDraft(); renderBillTabs(); renderManual(); updateFloat(); };
 window.__onCatalog = () => { renderManual(); renderPrice(); updateCatFloat(); };
 window.__authChanged = () => { if (activeTab === "invoices") startInvoices(true); };
+$("btScroll").addEventListener("click", (e) => {
+  const x = e.target.closest(".bt-x"); if (x) { closeSlot(+x.dataset.x); return; }
+  const m = e.target.closest(".bt-main"); if (m) switchSlot(+m.dataset.i);
+});
+$("btNew").onclick = addSlot;
+$("custName").addEventListener("input", debounce(() => renderBillTabs(), 150));
+let spyRaf = 0;
+window.addEventListener("scroll", () => { if (!spyRaf) spyRaf = requestAnimationFrame(() => { spyRaf = 0; spy(); }); }, { passive: true });
+document.addEventListener("keydown", (e) => {
+  if ($("app").style.display === "none") return;
+  const tag = (e.target.tagName || "").toLowerCase(), typing = tag === "input" || tag === "textarea" || tag === "select";
+  if (e.altKey && !e.ctrlKey && !e.metaKey) {
+    if (e.code === "KeyN") { e.preventDefault(); addSlot(); return; }
+    const m = /^Digit([1-9])$/.exec(e.code);
+    if (m && slots[+m[1] - 1]) { e.preventDefault(); if (activeTab !== "manual") setTab("manual"); switchSlot(+m[1] - 1); }
+    return;
+  }
+  if (e.key === "/" && !typing && activeTab === "manual" && !$("doneModal").classList.contains("open")) { e.preventDefault(); $("mSearch").focus(); $("mSearch").select(); }
+});
+renderBillTabs(true);
 setTab(store.get("abs_tab") || "manual");
 </script>
 </body>
