@@ -454,6 +454,35 @@ td.i-edit{text-align:right;white-space:nowrap}
   .pv-adj{justify-content:center}
   #doneEdit{grid-column:1/-1}
 }
+/* ---- all-bills drawer ---- */
+.bt-all{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;border:1.5px solid var(--ink);background:#fff;color:var(--ink);border-radius:12px;font-weight:800;padding:0 12px;min-height:44px;font-size:13.5px;white-space:nowrap}
+.bt-all .cnt{background:var(--ink);color:#fff;border-radius:999px;min-width:22px;height:22px;display:grid;place-items:center;font-size:12px;padding:0 6px}
+.bt-all:active{background:var(--panel2)}
+#billDrawer{padding:0;align-items:stretch;justify-content:flex-start}
+#billDrawer .dpanel{width:min(400px,92vw);height:100%;background:var(--panel,#fff);display:flex;flex-direction:column;box-shadow:6px 0 28px rgba(0,0,0,.25)}
+#billDrawer .dhead{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:14px 14px 8px}
+#billDrawer .dhead h3{margin:0;font-size:17px}
+#billDrawer .dsearch{margin:0 14px 8px;width:calc(100% - 28px);padding:11px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:16px}
+#bdList{flex:1;overflow-y:auto;padding:4px 10px 10px;-webkit-overflow-scrolling:touch}
+.bd-row{display:flex;align-items:stretch;gap:6px;margin-bottom:7px}
+.bd-main{flex:1;min-width:0;text-align:left;display:flex;align-items:center;gap:10px;border:1.5px solid var(--line);background:var(--panel2);color:var(--text);border-radius:12px;padding:9px 12px;min-height:54px}
+.bd-row.has .bd-main{border-color:var(--brand);background:var(--brand-soft)}
+.bd-row.on .bd-main{background:var(--ink);border-color:var(--ink);color:#fff}
+.bd-num{flex:0 0 auto;width:30px;height:30px;border-radius:50%;background:rgba(0,0,0,.08);display:grid;place-items:center;font-weight:800;font-size:12.5px}
+.bd-row.on .bd-num{background:rgba(255,255,255,.2)}
+.bd-txt{flex:1;min-width:0;display:flex;flex-direction:column}
+.bd-txt b{font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.bd-txt small{font-size:12px;font-weight:600;color:var(--muted)}
+.bd-row.on .bd-txt small{color:#FFD08A}
+.bd-tot{flex:0 0 auto;font-weight:800;font-variant-numeric:tabular-nums;font-size:14px}
+.bd-x{flex:0 0 auto;width:46px;border:1.5px solid var(--line);background:#fff;color:#B91C1C;border-radius:12px;font-size:20px}
+#billDrawer .dfoot{padding:10px 14px calc(12px + env(safe-area-inset-bottom));border-top:1px solid var(--line)}
+#billDrawer .dfoot .btn{width:100%;min-height:46px}
+#waModal{z-index:80}
+.done-actions{position:sticky;bottom:0;z-index:3;background:var(--panel,#fff);padding:10px 0 12px;margin-top:8px;border-top:1px solid var(--line)}
+#doneWa{box-shadow:0 2px 8px rgba(37,211,102,.35)}
+@media (max-width:640px){#doneWa{grid-column:1/-1;min-height:48px;font-size:15px}}
+#waModal .wa-in{width:100%;padding:13px 12px;border:1.5px solid var(--line);border-radius:10px;font-size:18px;letter-spacing:.5px;margin:8px 0 4px}
 </style>
 <style>
 /* ═════════ v3 — parallel bills · category colours · mobile & laptop polish ═════════ */
@@ -608,7 +637,7 @@ button,select,.tab,.cat,.ctile,.qk,.prow{touch-action:manipulation;-webkit-tap-h
     </div>
   </div>
 
-  <div class="billtabs" id="billTabs"><div class="wrap"><div class="bt-scroll" id="btScroll"></div><button class="bt-new" id="btNew" type="button" title="Start another bill (Alt+N)">＋ New bill</button></div></div>
+  <div class="billtabs" id="billTabs"><div class="wrap"><button class="bt-all" id="btAll" type="button" title="See all bills">☰ <span class="cnt" id="btAllN">1</span></button><div class="bt-scroll" id="btScroll"></div><button class="bt-new" id="btNew" type="button" title="Start another bill (Alt+N)">＋ New bill</button></div></div>
   <main class="wrap">
   <div id="loadError" class="banner err" style="display:none"></div>
 
@@ -708,6 +737,23 @@ button,select,.tab,.cat,.ctile,.qk,.prow{touch-action:manipulation;-webkit-tap-h
 <div class="modal-bg sheet" id="catSheet"><div class="modal">
   <div class="row sp-between"><h3 style="margin:0">Categories</h3><button class="btn ghost" id="catClose" type="button">Close</button></div>
   <div class="cat-grid" id="catGrid"></div>
+</div></div>
+
+<!-- all bills drawer -->
+<div class="modal-bg" id="billDrawer"><div class="dpanel">
+  <div class="dhead"><h3 id="bdTitle">All bills</h3><button class="btn ghost" id="bdClose" type="button">Close</button></div>
+  <input class="dsearch" id="bdSearch" type="search" placeholder="Search by name, mobile or bill no." autocomplete="off">
+  <div id="bdList"></div>
+  <div class="dfoot"><button class="btn primary" id="bdNew" type="button">＋ New bill</button></div>
+</div></div>
+
+<!-- whatsapp number -->
+<div class="modal-bg sheet" id="waModal"><div class="modal">
+  <h3 style="margin:0 0 4px">Send on WhatsApp</h3>
+  <div class="hint">Enter the customer’s number. The invoice PDF downloads to this device and a blank WhatsApp chat opens — attach the PDF there.</div>
+  <input class="wa-in" id="waNum" type="tel" inputmode="tel" autocomplete="off" placeholder="Mobile number e.g. 98765 43210">
+  <div class="hint" id="waHint">10-digit Indian numbers get +91 automatically.</div>
+  <div class="row" style="margin-top:12px;justify-content:flex-end;gap:8px"><button class="btn ghost" id="waCancel" type="button">Cancel</button><button class="btn wa" id="waGo" type="button">Download PDF &amp; open WhatsApp</button></div>
 </div></div>
 
 <!-- invoice viewer modal -->
@@ -975,7 +1021,7 @@ let editing = null; // set while an already-saved invoice is being edited
 const snapshot = () => { undoStack.push(JSON.stringify({ b: bill, a: adj })); if (undoStack.length > 40) undoStack.shift(); };
 
 /* ───────────────────────── parallel bills (hold one customer, serve the next) ───────────────────────── */
-const FIELD_IDS = ["custName", "custMobile", "payMode", "txnRef", "notes"], MAX_SLOTS = 9;
+const FIELD_IDS = ["custName", "custMobile", "payMode", "txnRef", "notes"], savingN = new Set();  // savingN = bill numbers currently being saved
 let slots = [], activeSlot = 0, slotSeq = 0;
 const buzz = () => { try { navigator.vibrate && navigator.vibrate(12); } catch {} };
 function newSlot() { return { n: ++slotSeq, bill: [], adj: 0, pct: $("pkgPct").value || "3", f: {}, ed: null, undo: [] }; }
@@ -989,6 +1035,13 @@ function applySlot(s) {
   $("pkgPct").value = s.pct != null ? s.pct : 3;
   FIELD_IDS.forEach((id) => ($(id).value = s.f && s.f[id] != null ? s.f[id] : id === "payMode" ? "CASH" : ""));
   syncPay(); closeCustom(); renderBill();
+}
+/** single source of truth for the Create / Preview buttons — always derived from the bill on screen */
+function syncActions() {
+  const cur = slots[activeSlot], busy = !!(cur && savingN.has(cur.n)), lbl = editing ? "Update invoice" : "Create invoice";
+  $("btnCreate").disabled = $("prevCreate").disabled = !bill.length || busy;
+  $("btnPreview").disabled = !bill.length;
+  $("btnCreate").textContent = $("prevCreate").textContent = busy ? "Saving…" : lbl;
 }
 function slotTotal(s) {
   const sub = s.bill.reduce((t, b) => t + Math.round((Number(b.qty) || 0) * (Number(b.rate) || 0)), 0);
@@ -1005,6 +1058,8 @@ function renderBillTabs(center) {
   }).join("");
   sc.scrollLeft = keep;
   if (center) { const on = sc.querySelector(".bt.on"); if (on) sc.scrollLeft = on.offsetLeft - (sc.clientWidth - on.offsetWidth) / 2; }
+  const an = $("btAllN"); if (an) an.textContent = list.length;
+  if ($("billDrawer").classList.contains("open")) renderDrawer(list);
   const t = $("billTitle"); if (t) t.textContent = "Bill " + live.n + (live.ed ? " · editing " + live.ed.invoiceNo : "");
   const fs = document.querySelector("#fab small"); if (fs) fs.textContent = "Bill " + live.n + " total";
 }
@@ -1021,7 +1076,6 @@ function addSlot() {
   if (blank(slots[activeSlot])) { toast("This bill is still empty — start adding items"); if (!isNarrow()) $("mSearch").focus(); return; }
   const other = slots.findIndex((s, i) => i !== activeSlot && blank(s));
   if (other >= 0) { switchSlot(other); return; }
-  if (slots.length >= MAX_SLOTS) { toast("Maximum " + MAX_SLOTS + " open bills — finish or close one first"); return; }
   slots.push(newSlot()); activeSlot = slots.length - 1;
   applySlot(slots[activeSlot]); renderBillTabs(true);
   window.scrollTo(0, 0); buzz(); toast("New bill started — the previous bill is on hold");
@@ -1075,9 +1129,7 @@ function renderBill(flashId) {
   const t = totals();
   $("tSub").textContent = inr(t.sub); $("tPkg").textContent = inr(t.pkg); $("tGrand").textContent = inr(t.grand);
   $("adjTag").textContent = adjLabel();
-  $("btnCreate").disabled = !bill.length; $("btnPreview").disabled = !bill.length;
-  const lbl = editing ? "Update invoice" : "Create invoice";
-  $("btnCreate").textContent = lbl; $("prevCreate").textContent = lbl;
+  syncActions();
   $("editBanner").innerHTML = editing
     ? `<div class="banner edit"><span>Editing <b>${esc(editing.invoiceNo)}</b> — saving updates the stored invoice.</span><button class="btn ghost" id="editCancel" type="button" style="padding:4px 10px">Cancel</button></div>` : "";
   if (window.__onBill) window.__onBill();
@@ -1290,7 +1342,13 @@ function buildBase() {
 }
 
 /** start a fresh bill — used right after an invoice is created, so the old one never lingers */
-function resetBill() {
+function resetBill(n) {
+  const curN = slots[activeSlot] && slots[activeSlot].n;
+  if (n != null && n !== curN) {      // the user moved to another bill while this one was saving → drop only the saved bill
+    const i = slots.findIndex((s) => s.n === n);
+    if (i >= 0 && slots.length > 1) { slots.splice(i, 1); if (i < activeSlot) activeSlot--; }
+    renderBillTabs(); saveDraft(); return;
+  }
   if (editing && editing.prevPct != null) $("pkgPct").value = editing.prevPct;
   bill = []; adj = 0; undoStack = []; lastTouched = null; editing = null;
   FIELD_IDS.forEach((id) => ($(id).value = id === "payMode" ? "CASH" : ""));
@@ -1304,35 +1362,34 @@ function resetBill() {
   saveDraft();
 }
 
-let creating = false;
+const withTimeout = (p, ms) => Promise.race([p, new Promise((_, rej) => setTimeout(() => rej(new Error("Timed out — check your internet. It may still have saved: look in Invoices before trying again.")), ms))]);
 async function createInvoice() {
-  if (!bill.length || creating) return;
+  const cur = slots[activeSlot]; if (!bill.length || !cur || savingN.has(cur.n)) return;
   if (editing && !confirm(`Update the saved invoice ${editing.invoiceNo}?`)) return;
-  creating = true;
-  const btns = [$("btnCreate"), $("prevCreate")], labels = btns.map((b) => b.textContent);
-  btns.forEach((b) => { b.disabled = true; b.textContent = "Saving…"; });
-  const base = buildBase();
+  const n = cur.n, ed = editing, base = buildBase();   // everything this save needs is captured now, before any await
+  savingN.add(n); syncActions();
   try {
     let inv;
-    if (editing) {
+    if (ed) {
       const { source, orderId, orderDocId, ...changes } = base;
-      await updateDoc(doc(db, "invoices", editing.docId), { ...changes, updatedAt: serverTimestamp() });
-      inv = { ...base, invoiceNo: editing.invoiceNo, date: editing.date || new Date(), saved: true, updated: true, docId: editing.docId };
+      await withTimeout(updateDoc(doc(db, "invoices", ed.docId), { ...changes, updatedAt: serverTimestamp() }), 25000);
+      inv = { ...base, invoiceNo: ed.invoiceNo, date: ed.date || new Date(), saved: true, updated: true, docId: ed.docId };
     } else {
-      const invoiceNo = await reserveInvoiceNo();
-      const ref = await addDoc(collection(db, "invoices"), {
+      const invoiceNo = await withTimeout(reserveInvoiceNo(), 25000);
+      const ref = await withTimeout(addDoc(collection(db, "invoices"), {
         ...base, invoiceNo, date: serverTimestamp(), createdAt: serverTimestamp(), updatedAt: serverTimestamp(), createdVia: "voice-billing",
-      });
+      }), 25000);
       inv = { ...base, invoiceNo, date: new Date(), saved: true, docId: ref.id };
     }
-    resetBill();                 // ← the finished bill is cleared immediately
+    savingN.delete(n);
+    resetBill(n);                // the finished bill is cleared (by id, so a bill you switched to is untouched)
     showInvoice(inv, "fresh");
   } catch (err) {
+    savingN.delete(n);
     const denied = err?.code === "permission-denied";
     toast(denied ? "Permission denied — sign in as admin" : "Save failed: " + (err.message || err));
     if (denied) openAuth();
-    btns.forEach((b, i) => { b.textContent = labels[i]; b.disabled = !bill.length; });
-  } finally { creating = false; }
+  } finally { savingN.delete(n); syncActions(); }
 }
 $("btnCreate").onclick = createInvoice;
 $("prevCreate").onclick = createInvoice;
@@ -1423,7 +1480,7 @@ $("doneClose").onclick = closeDone;
 $("doneNew").onclick = closeDone;       // the bill was already cleared when the invoice was created
 $("doneX").onclick = closeDone;
 $("doneModal").addEventListener("click", (e) => { if (e.target === $("doneModal")) closeDone(); });
-document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDone(); $("catSheet").classList.remove("open"); } });
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") { closeDone(); closeDrawer(); $("waModal").classList.remove("open"); $("catSheet").classList.remove("open"); } });
 
 /* edit an invoice that is already saved: load it into the bill, then "Update invoice" */
 function startEdit(inv) {
@@ -1433,8 +1490,7 @@ function startEdit(inv) {
   const ex = slots.findIndex((s) => s.ed && s.ed.docId === inv.id);
   if (ex >= 0) { setTab("manual"); switchSlot(ex); return; }
   if (bill.length || editing) {        // current bill is busy → edit in a NEW bill
-    if (slots.length >= MAX_SLOTS) { toast("Too many open bills — finish or close one first"); return; }
-    slots.push(newSlot()); activeSlot = slots.length - 1; applySlot(slots[activeSlot]);
+      slots.push(newSlot()); activeSlot = slots.length - 1; applySlot(slots[activeSlot]);
   }
   const prevPct = $("pkgPct").value;
   bill = inv.items.map((it, i) => {
@@ -1479,25 +1535,36 @@ function downloadBlob(blob, name) {
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name;
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000);
 }
-$("doneWa").onclick = async () => {
-  const inv = viewInv; if (!inv) return;
-  const btn = $("doneWa"), label = btn.innerHTML;
-  const num = (inv.customer.mobile || "").replace(/\D/g, "");
-  const to = num.length === 10 ? "91" + num : num.length === 11 && num[0] === "0" ? "91" + num.slice(1) : num;
-  const nm = inv.customer.name && inv.customer.name !== "Walk-in Customer" ? inv.customer.name : "";
-  const msg = `வணக்கம்${nm ? " " + nm : ""}! 🙏\nABS குடும்பத்திற்கு உங்களை அன்புடன் வரவேற்கிறோம். எங்களிடம் வாங்கியதற்கு மிக்க நன்றி! 🎆\n\n` +
-    `Hello${nm ? " " + nm : ""}! 🙏\nWelcome to the ABS family. Thank you for purchasing from ${SHOP.name}! 🎆\n\n` +
-    `Your invoice (${inv.invoiceNo}) is attached.\nபாதுகாப்பான, வளமான பண்டிகை வாழ்த்துகள்! / ${SHOP.thanks}.`;
-  const url = `https://wa.me/${to}?text=${encodeURIComponent(msg)}`;
-  const w = window.open("", "_blank"); // opened inside the tap so the browser doesn't block it
+let waInv = null, waUrl = "";
+const waNorm = (v) => { const d = String(v || "").replace(/\D/g, ""); return d.length === 10 ? "91" + d : d.length === 11 && d[0] === "0" ? "91" + d.slice(1) : d; };
+function resetWaGo() { waUrl = ""; $("waGo").disabled = false; $("waGo").textContent = "Download PDF & open WhatsApp"; $("waHint").textContent = "10-digit Indian numbers get +91 automatically."; }
+$("doneWa").onclick = () => {
+  if (!viewInv) return;
+  waInv = viewInv; resetWaGo();
+  $("waNum").value = ((waInv.customer && waInv.customer.mobile) || "").replace(/\D/g, "").replace(/^91(?=\d{10}$)/, "");
+  closeDone();                      // invoice popup closes so the number popup is the only thing on screen
+  $("waModal").classList.add("open");
+  setTimeout(() => $("waNum").focus(), 60);
+};
+$("waNum").addEventListener("input", () => { if (waUrl) resetWaGo(); });
+$("waCancel").onclick = () => $("waModal").classList.remove("open");
+$("waModal").addEventListener("click", (e) => { if (e.target === $("waModal")) $("waModal").classList.remove("open"); });
+$("waNum").addEventListener("keydown", (e) => { if (e.key === "Enter") $("waGo").click(); });
+$("waGo").onclick = async () => {
+  if (waUrl) { window.open(waUrl, "_blank") || (location.href = waUrl); $("waModal").classList.remove("open"); return; }  // popup-blocked fallback: a fresh tap opens the chat
+  const inv = waInv; if (!inv) return;
+  const to = waNorm($("waNum").value);
+  if (to.length < 11 || to.length > 15) { toast("Enter a valid mobile number"); $("waNum").focus(); return; }
+  const url = "https://wa.me/" + to;                       // blank chat — no prefilled text
+  const w = window.open("", "_blank");                     // opened inside the tap so the browser doesn't block it
   if (w) { try { w.document.write("<p style='font-family:sans-serif;padding:24px'>Preparing invoice…</p>"); } catch {} }
-  btn.disabled = true; btn.textContent = "Preparing invoice…";
+  const btn = $("waGo"); btn.disabled = true; btn.textContent = "Preparing PDF…";
   try {
     downloadBlob(await invoicePdfBlob(inv), `${inv.invoiceNo || "invoice"}.pdf`);
-    toast(to ? "Invoice downloaded — attach it in the WhatsApp chat" : "Invoice downloaded — pick a contact in WhatsApp");
+    toast("Invoice downloaded — attach it in the WhatsApp chat");
   } catch (err) { toast("Couldn’t create the PDF (" + (err.message || err) + ") — opening WhatsApp anyway"); }
-  finally { btn.disabled = false; btn.innerHTML = label; }
-  if (w && !w.closed) w.location.href = url; else window.open(url, "_blank") || (location.href = url);
+  if (w && !w.closed) { w.location.href = url; $("waModal").classList.remove("open"); resetWaGo(); }
+  else { waUrl = url; btn.disabled = false; btn.textContent = "Open WhatsApp chat ↗"; $("waHint").textContent = "PDF downloaded. Tap again to open the chat."; }
 };
 
 /* ───────────────────────── tabs · manual invoice · price list · invoices ───────────────────────── */
@@ -1811,6 +1878,33 @@ window.__authChanged = () => { if (activeTab === "invoices") startInvoices(true)
 $("btScroll").addEventListener("click", (e) => {
   const x = e.target.closest(".bt-x"); if (x) { closeSlot(+x.dataset.x); return; }
   const m = e.target.closest(".bt-main"); if (m) switchSlot(+m.dataset.i);
+});
+/* all-bills drawer */
+function renderDrawer(list) {
+  list = list || slots.map((s, i) => (i === activeSlot ? captureSlot() : s));
+  const q = $("bdSearch").value.trim().toLowerCase();
+  $("bdTitle").textContent = "All bills (" + list.length + ")";
+  const rows = list.map((s, i) => ({ s, i })).filter(({ s }) => !q || (slotLabel(s) + " " + ((s.f && s.f.custMobile) || "") + " bill " + s.n).toLowerCase().includes(q));
+  const box = $("bdList"), keep = box.scrollTop;
+  box.innerHTML = rows.map(({ s, i }) => {
+    const c = s.bill.length, sub = s.ed ? "✎ Editing " + s.ed.invoiceNo : c ? c + (c > 1 ? " items" : " item") : "empty";
+    return `<div class="bd-row${i === activeSlot ? " on" : ""}${c ? " has" : ""}"><button type="button" class="bd-main" data-i="${i}"><span class="bd-num">${s.n}</span><span class="bd-txt"><b>${esc(slotLabel(s))}</b><small>${esc(sub)}</small></span><span class="bd-tot">${c ? inr(slotTotal(s)) : ""}</span></button>${list.length > 1 ? `<button type="button" class="bd-x" data-x="${i}" aria-label="Close this bill">×</button>` : ""}</div>`;
+  }).join("") || `<div class="hint" style="padding:18px;text-align:center">No bills match “${esc(q)}”.</div>`;
+  box.scrollTop = keep;
+}
+function openDrawer() {
+  $("bdSearch").value = ""; renderDrawer(); $("billDrawer").classList.add("open");
+  const on = $("bdList").querySelector(".bd-row.on"); if (on) on.scrollIntoView({ block: "center" });
+}
+const closeDrawer = () => $("billDrawer").classList.remove("open");
+$("btAll").onclick = openDrawer;
+$("bdClose").onclick = closeDrawer;
+$("billDrawer").addEventListener("click", (e) => { if (e.target === $("billDrawer")) closeDrawer(); });
+$("bdSearch").addEventListener("input", () => renderDrawer());
+$("bdNew").onclick = () => { closeDrawer(); addSlot(); };
+$("bdList").addEventListener("click", (e) => {
+  const x = e.target.closest(".bd-x"); if (x) { closeSlot(+x.dataset.x); renderDrawer(); return; }
+  const m = e.target.closest(".bd-main"); if (m) { closeDrawer(); switchSlot(+m.dataset.i); window.scrollTo(0, 0); }
 });
 $("btNew").onclick = addSlot;
 $("custName").addEventListener("input", debounce(() => renderBillTabs(), 150));
